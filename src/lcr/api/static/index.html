@@ -16,13 +16,15 @@
         #settings-drawer.open { transform: translateX(0); }
         #drawer-overlay { transition: opacity 0.3s ease-in-out; pointer-events: none; opacity: 0; }
         #drawer-overlay.open { pointer-events: auto; opacity: 1; }
-        #answer-text h1,#answer-text h2,#answer-text h3 { font-weight:700; margin:1.5em 0 .5em; color: #1e293b; }
-        #answer-text p { margin-bottom:1em; line-height: 1.7; }
-        #answer-text strong { font-weight:700; color: #3b82f6; }
+        
+        /* Markdown Styling */
+        #answer-text h1,#answer-text h2,#answer-text h3 { font-weight:700; margin:1.2em 0 .5em; color: #1e293b; }
+        #answer-text p { margin-bottom:1em; line-height: 1.8; color: #334155; }
+        #answer-text strong { font-weight:700; color: #2563eb; }
         #answer-text ul,#answer-text ol { margin-left:1.5em; margin-bottom:1em; list-style:disc; }
         #answer-text li { margin-bottom:0.4em; }
-        #answer-text table { width: 100%; border-collapse: collapse; margin: 1em 0; font-size: 0.9em; }
-        #answer-text th, #answer-text td { border: 1px solid #e2e8f0; padding: 8px; text-align: left; }
+        #answer-text table { width: 100%; border-collapse: collapse; margin: 1em 0; font-size: 0.85em; }
+        #answer-text th, #answer-text td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; }
         #answer-text th { background: #f8fafc; font-weight: 700; }
     </style>
 </head>
@@ -35,7 +37,9 @@
             <h2 class="text-lg font-bold flex items-center"><i class="fas fa-cog mr-2 text-slate-400"></i>Settings</h2>
             <button id="close-settings" class="text-slate-400 hover:text-slate-600 transition"><i class="fas fa-times"></i></button>
         </div>
+        
         <div class="flex-1 space-y-6 overflow-y-auto pr-2 custom-scrollbar">
+            <!-- LLM -->
             <section class="space-y-4">
                 <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest border-b pb-1">LLM Configuration</h3>
                 <div>
@@ -44,21 +48,40 @@
                         <option value="deepseek">DeepSeek</option>
                         <option value="kimi">Kimi (Moonshot)</option>
                         <option value="openai">OpenAI</option>
+                        <option value="gemini">Google Gemini</option>
                         <option value="custom">Custom</option>
                     </select>
+
                     <label class="block text-xs font-bold text-slate-500 mb-1">Model</label>
                     <select id="setting-model" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                    <input type="text" id="setting-model-custom" placeholder="e.g. openai/my-model" class="hidden w-full mt-2 border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-500 mb-1">API Key</label>
-                    <input type="password" id="setting-key" placeholder="Leave blank to use .env" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    <input type="password" id="setting-key" placeholder="Using .env if empty" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-500 mb-1">API Base URL</label>
                     <input type="text" id="setting-base" placeholder="Optional" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
             </section>
+
+            <!-- RAG -->
+            <section class="space-y-4">
+                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest border-b pb-1">Retrieval (RAG)</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1">Evidence K</label>
+                        <input type="number" id="setting-k" value="100" min="5" max="200" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1">Max Sources</label>
+                        <input type="number" id="setting-sources" value="15" min="1" max="30" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                </div>
+            </section>
         </div>
+        
         <div class="pt-6 border-t mt-6 space-y-3">
             <button id="test-llm-btn" class="w-full border border-slate-200 hover:bg-slate-50 text-slate-700 py-2 rounded-md text-sm font-bold transition flex items-center justify-center space-x-2">
                 <i class="fas fa-plug text-slate-400"></i><span>Test Connection</span>
@@ -76,62 +99,61 @@
         <div class="flex items-center space-x-6">
             <div class="flex items-center space-x-2 px-3 py-1 bg-slate-50 border border-slate-100 rounded-full">
                 <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                <span class="text-xs text-slate-500 font-mono">1,220 Papers Indexed</span>
+                <span class="text-xs text-slate-500 font-mono italic">1,220 Papers Online</span>
             </div>
             <button id="open-settings" class="text-slate-400 hover:text-slate-600 p-1 transition"><i class="fas fa-sliders-h text-xl"></i></button>
         </div>
     </header>
 
     <main class="flex-1 min-h-0 flex flex-col bg-white overflow-hidden items-center">
-        <!-- Center Chat Container -->
-        <div class="w-full max-w-4xl h-full flex flex-col shadow-2xl shadow-slate-200/50">
-            <!-- Search Area -->
+        <div class="w-full max-w-4xl h-full flex flex-col">
+            <!-- Search -->
             <div class="p-8 bg-white border-b border-slate-100">
-                <div class="mb-4">
+                <div class="mb-5">
                     <textarea id="question" rows="3"
                         class="w-full border-2 border-slate-100 rounded-2xl p-5 text-slate-800 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition resize-none text-lg leading-relaxed placeholder:text-slate-300"
-                        placeholder="What is the binding energy of CO2 on copper surfaces?"></textarea>
+                        placeholder="Describe a research problem or ask about specific results..."></textarea>
                 </div>
 
                 <div class="flex justify-between items-center">
-                    <div class="flex items-center space-x-3">
+                    <div class="flex items-center space-x-4">
                         <select id="prompt-template-select"
-                            class="border border-slate-200 rounded-lg px-4 py-2 text-sm text-slate-600 focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50 hover:bg-slate-100 transition">
+                            class="border border-slate-200 rounded-lg px-4 py-2 text-sm text-slate-600 focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50 hover:bg-slate-100 transition min-w-[200px]">
                             <option value="">Loading templates...</option>
                         </select>
-                        <button id="edit-prompt-btn" class="text-slate-400 hover:text-blue-600 p-2" title="Edit Template"><i class="fas fa-edit"></i></button>
+                        <button id="edit-prompt-btn" class="text-slate-400 hover:text-blue-600 p-2" title="View/Edit Template"><i class="fas fa-code"></i></button>
                     </div>
                     <button id="ask-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-10 py-3 rounded-xl font-black transition shadow-lg shadow-blue-500/30 flex items-center space-x-3">
-                        <i class="fas fa-paper-plane"></i><span>Execute Research Query</span>
+                        <i class="fas fa-bolt"></i><span>Run Auditor</span>
                     </button>
                 </div>
                 
                 <div id="prompt-edit-panel" class="hidden mt-4">
-                    <textarea id="prompt-content-input" rows="6" class="w-full border border-slate-200 rounded-xl p-3 text-xs font-mono text-slate-600 bg-slate-50"></textarea>
+                    <textarea id="prompt-content-input" rows="8" class="w-full border border-slate-200 rounded-xl p-4 text-xs font-mono text-slate-600 bg-slate-50 leading-normal"></textarea>
                 </div>
             </div>
 
-            <!-- Result Area -->
-            <div id="result-area" class="flex-1 overflow-y-auto p-10 custom-scrollbar bg-slate-50/30">
+            <!-- Results -->
+            <div id="result-area" class="flex-1 overflow-y-auto p-10 custom-scrollbar bg-slate-50/20">
                 <div id="welcome-screen" class="h-full flex flex-col items-center justify-center text-slate-300 space-y-6">
-                    <div class="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center">
-                        <i class="fas fa-atom text-5xl opacity-40"></i>
+                    <div class="w-20 h-24 bg-slate-100 rounded-2xl flex items-center justify-center border-b-4 border-slate-200">
+                        <i class="fas fa-scroll text-4xl opacity-30"></i>
                     </div>
                     <div class="text-center">
-                        <p class="text-xl font-bold text-slate-400">Ready for Systematic Review</p>
-                        <p class="text-sm">Type your scientific question to analyze 1,220 indexed papers.</p>
+                        <p class="text-lg font-bold text-slate-400 uppercase tracking-widest">Global Database Mode</p>
+                        <p class="text-sm">Two-stage retrieval active across all 1,220 papers.</p>
                     </div>
                 </div>
 
                 <div id="answer-container" class="hidden space-y-10 pb-20">
-                    <article class="bg-white p-10 rounded-3xl shadow-xl shadow-slate-200/40 border border-slate-100 relative">
-                        <div class="absolute -top-4 left-8 px-4 py-1 bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-full">Synthesized Answer</div>
-                        <div id="answer-text" class="text-slate-800 text-lg"></div>
+                    <article class="bg-white p-10 rounded-3xl shadow-xl shadow-slate-200/30 border border-slate-100 relative">
+                        <div class="absolute -top-3 left-10 px-4 py-1 bg-slate-800 text-white text-[10px] font-black uppercase tracking-widest rounded-md">Audit Report</div>
+                        <div id="answer-text" class="text-slate-800"></div>
                     </article>
                     
                     <div class="space-y-6">
                         <h3 class="px-2 text-xs font-black text-slate-400 uppercase tracking-widest flex items-center">
-                            <i class="fas fa-microscope mr-2"></i>Supporting Evidence & Citations
+                            <i class="fas fa-list-ol mr-2 text-blue-500"></i>Referenced Studies
                         </h3>
                         <div id="citations-list" class="space-y-4"></div>
                     </div>
@@ -145,14 +167,15 @@
             deepseek: { apiBase: "", models: [{ value: "deepseek/deepseek-chat", label: "DeepSeek V3" }, { value: "deepseek/deepseek-reasoner", label: "DeepSeek R1" }] },
             kimi: { apiBase: "https://api.moonshot.cn/v1", models: [{ value: "openai/kimi-k2.6", label: "Kimi K2.6" }] },
             openai: { apiBase: "", models: [{ value: "gpt-4o", label: "GPT-4o" }, { value: "o1", label: "o1-preview" }] },
+            gemini: { apiBase: "", models: [{ value: "gemini/gemini-2.0-pro", label: "Gemini 2.0 Pro" }] },
             custom: { apiBase: "", models: [] }
         };
 
-        let llmSettings = { llm: "deepseek/deepseek-chat", summary_llm: "", api_key: "", api_base: "", multimodal: 0, evidence_k: 50, max_sources: 5, prompt_template: "" };
+        let llmSettings = { llm: "deepseek/deepseek-chat", api_key: "", api_base: "", evidence_k: 100, max_sources: 15, prompt_template: "" };
 
         // DOM
         const askBtn = document.getElementById('ask-btn'), questionInput = document.getElementById('question'), welcomeScreen = document.getElementById('welcome-screen'), answerContainer = document.getElementById('answer-container'), answerText = document.getElementById('answer-text'), citationsList = document.getElementById('citations-list'), promptTemplateSelect = document.getElementById('prompt-template-select'), promptEditPanel = document.getElementById('prompt-edit-panel'), promptContentInput = document.getElementById('prompt-content-input');
-        const openSettingsBtn = document.getElementById('open-settings'), closeSettingsBtn = document.getElementById('close-settings'), settingsDrawer = document.getElementById('settings-drawer'), drawerOverlay = document.getElementById('drawer-overlay'), applySettingsBtn = document.getElementById('apply-settings'), testLlmBtn = document.getElementById('test-llm-btn'), testStatus = document.getElementById('test-status'), settingProvider = document.getElementById('setting-provider'), settingModel = document.getElementById('setting-model'), settingKey = document.getElementById('setting-key'), settingBase = document.getElementById('setting-base');
+        const openSettingsBtn = document.getElementById('open-settings'), closeSettingsBtn = document.getElementById('close-settings'), settingsDrawer = document.getElementById('settings-drawer'), drawerOverlay = document.getElementById('drawer-overlay'), applySettingsBtn = document.getElementById('apply-settings'), testLlmBtn = document.getElementById('test-llm-btn'), testStatus = document.getElementById('test-status'), settingProvider = document.getElementById('setting-provider'), settingModel = document.getElementById('setting-model'), settingKey = document.getElementById('setting-key'), settingBase = document.getElementById('setting-base'), settingK = document.getElementById('setting-k'), settingSources = document.getElementById('setting-sources');
 
         // --- Settings ---
         const closeDrawer = () => { settingsDrawer.classList.remove('open'); drawerOverlay.classList.remove('open'); };
@@ -162,18 +185,24 @@
         function onProviderChange() {
             const config = PROVIDER_MODELS[settingProvider.value];
             settingModel.innerHTML = config.models.map(m => `<option value="${m.value}">${m.label}</option>`).join('');
-            settingBase.value = config.apiBase;
+            if (config.apiBase) settingBase.value = config.apiBase;
         }
         settingProvider.onchange = onProviderChange;
+        
         applySettingsBtn.onclick = () => {
-            llmSettings = { ...llmSettings, llm: settingModel.value, api_key: settingKey.value.trim(), api_base: settingBase.value.trim() };
+            llmSettings = { 
+                ...llmSettings, 
+                llm: settingModel.value, 
+                api_key: settingKey.value.trim(), 
+                api_base: settingBase.value.trim(),
+                evidence_k: parseInt(settingK.value),
+                max_sources: parseInt(settingSources.value)
+            };
             closeDrawer();
         };
 
         testLlmBtn.onclick = async () => {
-            testLlmBtn.disabled = true;
-            testStatus.classList.remove('hidden');
-            testStatus.textContent = 'Testing...';
+            testLlmBtn.disabled = true; testStatus.classList.remove('hidden'); testStatus.textContent = 'Testing...';
             try {
                 const res = await fetch('/admin/test-llm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ llm: settingModel.value, api_key: settingKey.value.trim(), api_base: settingBase.value.trim() }) });
                 const result = await res.json();
@@ -202,7 +231,7 @@
         // --- Execute ---
         askBtn.onclick = async () => {
             const question = questionInput.value.trim(); if (!question) return;
-            askBtn.disabled = true; askBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i><span>Analyzing Database...</span>';
+            askBtn.disabled = true; askBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i><span>Auditing Database...</span>';
             try {
                 const res = await fetch('/ask', {
                     method: 'POST',
@@ -214,26 +243,27 @@
                 answerText.innerHTML = marked.parse(data.answer);
                 citationsList.innerHTML = data.citations.map(c => {
                     const meta = c.metadata || {};
-                    const year = (meta.year || '').slice(0,4);
                     const authors = meta.creators ? (meta.creators.split(';')[0] + (meta.creators.includes(';') ? ' et al.' : '')) : 'Unknown';
-                    return `<div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:border-blue-200 transition group">
+                    return `<div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:border-blue-100 transition group relative overflow-hidden">
                         <div class="flex justify-between items-start mb-3">
                             <div class="flex items-center space-x-3">
-                                <span class="bg-blue-50 text-blue-600 w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm">${c.display_index}</span>
+                                <span class="bg-blue-600 text-white w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm shadow-md">${c.display_index}</span>
                                 <div>
-                                    <div class="text-sm font-bold text-slate-800">${meta.title || c.doc_id}</div>
-                                    <div class="text-[10px] text-slate-400 mt-0.5">${authors} (${year}) · ${meta.publication || ''}</div>
+                                    <div class="text-sm font-bold text-slate-800 leading-snug">${meta.title || c.doc_id}</div>
+                                    <div class="text-[10px] text-slate-400 mt-1">${authors} (${(meta.year||'').slice(0,4)}) · <span class="text-blue-400">${meta.publication || ''}</span></div>
                                 </div>
                             </div>
-                            <span class="text-[10px] font-mono text-slate-300 group-hover:text-blue-400 transition">${meta.doi}</span>
                         </div>
-                        <div class="text-xs text-slate-600 leading-relaxed pl-11">"${c.snippet}..."</div>
-                        ${meta.citation_key ? `<div class="mt-2 pl-11 text-[9px] font-mono text-slate-400 uppercase tracking-widest">Key: ${meta.citation_key}</div>` : ''}
+                        <div class="text-xs text-slate-600 leading-relaxed pl-11 border-l-2 border-slate-50 italic">"${c.snippet}..."</div>
+                        <div class="mt-3 pl-11 flex items-center space-x-4">
+                            <span class="text-[9px] font-mono text-slate-300">DOI: ${meta.doi}</span>
+                            ${meta.citation_key ? `<span class="text-[9px] font-black text-slate-400 uppercase tracking-tighter bg-slate-100 px-1.5 py-0.5 rounded">@${meta.citation_key}</span>` : ''}
+                        </div>
                     </div>`;
                 }).join('');
                 document.getElementById('result-area').scrollTo({ top: 0, behavior: 'smooth' });
             } catch (err) { alert(err.message); }
-            finally { askBtn.disabled = false; askBtn.innerHTML = '<i class="fas fa-paper-plane"></i><span>Execute Research Query</span>'; }
+            finally { askBtn.disabled = false; askBtn.innerHTML = '<i class="fas fa-bolt"></i><span>Run Auditor</span>'; }
         };
 
         onProviderChange();
