@@ -46,16 +46,22 @@
             <section class="space-y-4">
                 <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest border-b pb-1">LLM Configuration</h3>
                 <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">Provider</label>
+                    <select id="setting-provider" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none mb-2">
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="kimi">Kimi (Moonshot)</option>
+                        <option value="claude">Anthropic Claude</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="gemini">Google Gemini</option>
+                        <option value="custom">Custom / Other</option>
+                    </select>
+
                     <label class="block text-xs font-bold text-slate-500 mb-1">Model</label>
                     <select id="setting-model" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                        <option value="deepseek/deepseek-chat">DeepSeek V3 (Chat)</option>
-                        <option value="moonshot/moonshot-v2-128k">Kimi (moonshot-v2-128k)</option>
-                        <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
-                        <option value="gpt-4o-2024-11-20">GPT-4o (2024-11-20)</option>
-                        <option value="gemini/gemini-1.5-pro">Gemini 1.5 Pro</option>
                     </select>
-                    <input type="text" id="setting-model-custom" placeholder="Custom model name..." 
-                        class="w-full mt-2 border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    <!-- 仅 custom provider 时显示 -->
+                    <input type="text" id="setting-model-custom" placeholder="e.g. openai/my-model" 
+                        class="hidden w-full mt-2 border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-500 mb-1">API Key</label>
@@ -67,8 +73,7 @@
                     <input type="text" id="setting-base" placeholder="Optional custom endpoint" 
                         class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                     <p class="text-[10px] text-slate-400 mt-1">
-                        Only for OpenAI-compatible services (e.g. Moonshot, MiniMax, Ollama). 
-                        Example: <code>https://api.moonshot.cn/v1</code>
+                        Auto-filled for Kimi. For other OpenAI-compatible services, enter manually.
                     </p>
                 </div>
             </section>
@@ -174,7 +179,7 @@
                 </div>
             </div>
 
-            <div id="result-area" class="flex-1 overflow-y-auto p-8 custom-scrollbar">
+            <div id="result-area" class="flex-1 min-h-0 overflow-y-auto p-8 custom-scrollbar">
                 <div id="welcome-screen" class="h-full flex flex-col items-center justify-center text-slate-400 space-y-4">
                     <i class="fas fa-microscope text-6xl opacity-20"></i><p class="text-lg">Select literature and ask a question to begin analysis.</p>
                 </div>
@@ -199,6 +204,60 @@
 
     <script>
         // State
+        const PROVIDER_MODELS = {
+            deepseek: {
+                apiBase: "",
+                models: [
+                    { value: "deepseek/deepseek-chat", label: "DeepSeek V3 (Chat · 128k)" },
+                    { value: "deepseek/deepseek-reasoner", label: "DeepSeek R1 (Thinking · 128k)" },
+                ]
+            },
+            kimi: {
+                apiBase: "https://api.moonshot.cn/v1",
+                models: [
+                    { value: "openai/kimi-k2.6", label: "Kimi K2.6 (Latest)" },
+                    { value: "openai/kimi-k2.5", label: "Kimi K2.5" },
+                    { value: "openai/kimi-k2-0905-preview", label: "Kimi K2 0905 Preview" },
+                    { value: "openai/kimi-k2-0711-preview", label: "Kimi K2 0711 Preview" },
+                    { value: "openai/kimi-k2-turbo-preview", label: "Kimi K2 Turbo Preview" },
+                    { value: "openai/kimi-k2-thinking", label: "Kimi K2 Thinking" },
+                    { value: "openai/kimi-k2-thinking-turbo", label: "Kimi K2 Thinking Turbo" },
+                    { value: "moonshot/moonshot-v1-auto", label: "Moonshot v1 Auto" },
+                    { value: "moonshot/moonshot-v1-128k", label: "Moonshot v1 128k" },
+                    { value: "moonshot/moonshot-v1-32k", label: "Moonshot v1 32k" },
+                    { value: "moonshot/moonshot-v1-8k", label: "Moonshot v1 8k" },
+                ]
+            },
+            claude: {
+                apiBase: "",
+                models: [
+                    { value: "claude-opus-4-7", label: "Claude Opus 4.7" },
+                    { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+                    { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
+                ]
+            },
+            openai: {
+                apiBase: "",
+                models: [
+                    { value: "gpt-4o-2024-11-20", label: "GPT-4o (2024-11-20)" },
+                    { value: "gpt-4o-mini", label: "GPT-4o Mini" },
+                    { value: "o3", label: "o3" },
+                    { value: "o4-mini", label: "o4-mini" },
+                ]
+            },
+            gemini: {
+                apiBase: "",
+                models: [
+                    { value: "gemini/gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+                    { value: "gemini/gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+                ]
+            },
+            custom: {
+                apiBase: "",
+                models: []
+            }
+        };
+
         let collections = [];
         let selectedDois = new Set();
         let searchKeyword = '';
@@ -206,15 +265,57 @@
 
         // DOM
         const treeContainer = document.getElementById('tree-container'), treeSearch = document.getElementById('tree-search'), loadZoteroBtn = document.getElementById('load-zotero-btn'), askBtn = document.getElementById('ask-btn'), analyseBtn = document.getElementById('analyse-btn'), questionInput = document.getElementById('question'), resultArea = document.getElementById('result-area'), welcomeScreen = document.getElementById('welcome-screen'), answerContainer = document.getElementById('answer-container'), answerText = document.getElementById('answer-text'), citationsList = document.getElementById('citations-list'), errorBox = document.getElementById('error-box'), errorMsg = document.getElementById('error-msg'), selectedSummary = document.getElementById('selected-summary'), clearSelectionBtn = document.getElementById('clear-selection-btn'), llmBadge = document.getElementById('llm-badge'), visionBadge = document.getElementById('vision-badge');
-        const openSettingsBtn = document.getElementById('open-settings'), closeSettingsBtn = document.getElementById('close-settings'), settingsDrawer = document.getElementById('settings-drawer'), drawerOverlay = document.getElementById('drawer-overlay'), applySettingsBtn = document.getElementById('apply-settings'), settingModel = document.getElementById('setting-model'), settingModelCustom = document.getElementById('setting-model-custom'), settingKey = document.getElementById('setting-key'), settingBase = document.getElementById('setting-base'), settingMultimodal = document.getElementById('setting-multimodal'), settingK = document.getElementById('setting-k'), settingSources = document.getElementById('setting-sources');
+        const openSettingsBtn = document.getElementById('open-settings'), closeSettingsBtn = document.getElementById('close-settings'), settingsDrawer = document.getElementById('settings-drawer'), drawerOverlay = document.getElementById('drawer-overlay'), applySettingsBtn = document.getElementById('apply-settings'), settingProvider = document.getElementById('setting-provider'), settingModel = document.getElementById('setting-model'), settingModelCustom = document.getElementById('setting-model-custom'), settingKey = document.getElementById('setting-key'), settingBase = document.getElementById('setting-base'), settingMultimodal = document.getElementById('setting-multimodal'), settingK = document.getElementById('setting-k'), settingSources = document.getElementById('setting-sources');
 
+        function onProviderChange() {
+            const provider = settingProvider.value;
+            const config = PROVIDER_MODELS[provider];
+            
+            // 1. Rebuild models
+            settingModel.innerHTML = '';
+            config.models.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.value;
+                opt.textContent = m.label;
+                settingModel.appendChild(opt);
+            });
+
+            // 2. Auto-fill API Base
+            if (config.apiBase) {
+                settingBase.value = config.apiBase;
+            } else {
+                // If current base is a known one from other providers, clear it
+                const knownBases = Object.values(PROVIDER_MODELS).map(p => p.apiBase).filter(b => b);
+                if (knownBases.includes(settingBase.value)) {
+                    settingBase.value = '';
+                }
+            }
+
+            // 3. Toggle custom input
+            if (provider === 'custom') {
+                settingModel.classList.add('hidden');
+                settingModelCustom.classList.remove('hidden');
+            } else {
+                settingModel.classList.remove('hidden');
+                settingModelCustom.classList.add('hidden');
+            }
+        }
+
+        settingProvider.onchange = onProviderChange;
         fetchCollections();
+        onProviderChange(); // Initial fill
+
         openSettingsBtn.onclick = () => { settingsDrawer.classList.add('open'); drawerOverlay.classList.add('open'); };
         const closeDrawer = () => { settingsDrawer.classList.remove('open'); drawerOverlay.classList.remove('open'); };
         closeSettingsBtn.onclick = closeDrawer; drawerOverlay.onclick = closeDrawer;
         applySettingsBtn.onclick = () => {
+            const provider = settingProvider.value;
+            const modelVal = provider === 'custom' 
+                ? settingModelCustom.value.trim() 
+                : settingModel.value;
+
             llmSettings = { 
-                llm: settingModelCustom.value.trim() || settingModel.value, 
+                llm: modelVal, 
                 api_key: settingKey.value.trim(), 
                 api_base: settingBase.value.trim(), 
                 multimodal: parseInt(settingMultimodal.value),
@@ -297,11 +398,56 @@
                 const res = await fetch('/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question, dois: Array.from(selectedDois), llm_settings: llmSettings }) });
                 const data = await res.json(); if (!res.ok) throw new Error(data.detail || 'Error');
                 answerText.textContent = data.answer; citationsList.innerHTML = '';
-                data.citations.forEach((cit, i) => {
-                    const card = document.createElement('div'); card.className = 'bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm';
-                    card.innerHTML = `<details class="group"><summary class="flex items-center justify-between p-4 cursor-pointer list-none"><div class="flex items-center space-x-3"><span class="flex items-center justify-center bg-blue-100 text-blue-700 w-6 h-6 rounded text-[10px] font-bold">#${i+1}</span><h3 class="font-bold text-sm text-slate-700 truncate max-w-lg">${cit.source}</h3></div><i class="fas fa-chevron-down text-slate-300 group-open:rotate-180 transition-transform"></i></summary><div class="px-4 pb-4 border-t border-slate-50 pt-3"><div class="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border-l-4 border-blue-400 italic">"${cit.text}..."</div></div></details>`;
-                    citationsList.appendChild(card);
+                
+                data.citations.forEach((cit) => {
+                    const meta = cit.metadata || {};
+                    const authors = Array.isArray(meta.authors) && meta.authors.length              
+                        ? meta.authors.slice(0, 3).join(', ') + (meta.authors.length > 3 ? ' et al.' : '')                                                                                
+                        : 'Unknown authors';                            
+                    const year = meta.year || '';                                                   
+                    const journal = meta.journal || '';                 
+                    const doi = meta.doi || cit.doc_id || '';                                       
+                    const doiUrl = doi.startsWith('http') ? doi : `https://doi.org/${doi}`;
+                    const rcsScore = cit.rcs_score ?? 0;                                            
+                    const scoreColor = rcsScore >= 8 ? 'bg-emerald-100 text-emerald-700'
+                        : rcsScore >= 5 ? 'bg-amber-100 text-amber-700'                             
+                        : 'bg-slate-100 text-slate-500';                
+                                                                                                    
+                    const card = document.createElement('div');         
+                    card.className = 'bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm';                                                                           
+                    card.innerHTML = `
+                        <details class="group">                                                     
+                            <summary class="flex items-center justify-between p-4 cursor-pointer list-none hover:bg-slate-50 transition">                                              
+                                <div class="flex items-center space-x-3 min-w-0">
+                                    <span class="flex-shrink-0 flex items-center justify-center bg-blue-100 text-blue-700 w-7 h-7 rounded text-xs font-bold">${cit.display_index}</span>                                                
+                                    <div class="min-w-0">                                           
+                                        <div class="text-sm font-bold text-slate-800 truncate">${meta.title || doi}</div>
+                                        <div class="text-[11px] text-slate-400 mt-0.5">${authors}${year ? ' · ' + year : ''}${journal ? ' · ' + journal : ''}</div>  
+                                    </div>
+                                </div>                                                              
+                                <div class="flex items-center space-x-2 flex-shrink-0 ml-3">
+                                    <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${scoreColor}">RCS ${rcsScore}</span>                                                 
+                                    <i class="fas fa-chevron-down text-slate-300 group-open:rotate-180 transition-transform text-xs"></i>                              
+                                </div>                                  
+                            </summary>                                                              
+                            <div class="px-4 pb-4 border-t border-slate-100 pt-3 space-y-2">
+                                <div class="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border-l-4 border-blue-400 italic leading-relaxed">"${cit.snippet || ''}..."</div>    
+                                ${doi ? `<a href="${doiUrl}" target="_blank" class="text-[10px] text-blue-500 hover:underline font-mono">DOI: ${doi}</a>` : ''}                       
+                            </div>                                      
+                        </details>`;                                                                
+                    citationsList.appendChild(card);                    
                 });
+
+                // 显示结构校验结果（仅在有问题时）                                                 
+                if (data.structural_check && !data.structural_check.passed) {
+                    const warn = document.createElement('div');                                     
+                    warn.className = 'max-w-4xl mx-auto p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 mb-4';                                              
+                    const issues = [...data.structural_check.issues,
+                        ...data.structural_check.uncited_sentences.map(s => `Uncited: "${s.slice(0, 60)}..."`)                                                                            
+                    ].join(' | ');                                                                  
+                    warn.innerHTML = `<i class="fas fa-exclamation-triangle mr-1"></i><strong>Citation check:</strong> ${issues}`;                                
+                    answerContainer.prepend(warn);
+                }
                 answerContainer.classList.remove('hidden');
             } catch (err) { errorMsg.textContent = err.message; errorBox.classList.remove('hidden'); }
             finally { askBtn.disabled = false; askBtn.innerHTML = '<i class="fas fa-search"></i><span>Ask System</span>'; }
