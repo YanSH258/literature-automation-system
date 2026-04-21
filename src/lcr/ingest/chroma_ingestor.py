@@ -11,16 +11,22 @@ CHROMA_DIR = CACHE_DIR / "chroma"
 EMBED_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 class ChromaIngestor:
-    def __init__(self, persist_dir: Path = CHROMA_DIR):
+    def __init__(self, persist_dir: Path = CHROMA_DIR, skip_model: bool = False):
         self.persist_dir = persist_dir
         self.persist_dir.mkdir(parents=True, exist_ok=True)
         self.client = chromadb.PersistentClient(path=str(self.persist_dir))
-        self.embedding_fn = SentenceTransformerEmbeddingFunction(model_name=EMBED_MODEL)
-        self.collection = self.client.get_or_create_collection(
-            name="lcr_papers",
-            embedding_function=self.embedding_fn,
-            metadata={"hnsw:space": "cosine"}
-        )
+        
+        if not skip_model:
+            self.embedding_fn = SentenceTransformerEmbeddingFunction(model_name=EMBED_MODEL)
+            self.collection = self.client.get_or_create_collection(
+                name="lcr_papers",
+                embedding_function=self.embedding_fn,
+                metadata={"hnsw:space": "cosine"}
+            )
+        else:
+            self.embedding_fn = None
+            # 补填模式：只获取已存在的 collection，不关联 embedding 函数
+            self.collection = self.client.get_collection(name="lcr_papers")
         # 加载 zotero-mcp 元数据
         self._zotero_meta = self._load_zotero_meta()
 
