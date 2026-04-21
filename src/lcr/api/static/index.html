@@ -6,43 +6,36 @@
     <title>LCR · Literature Citation-RAG</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
-        .loading-spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #3b82f6;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            animation: spin 1s linear infinite;
-            display: inline-block;
-            vertical-align: middle;
-            margin-right: 8px;
-        }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        .collection-node[data-collapsed="true"] + ul { display: none; }
-        
         #settings-drawer { transition: transform 0.3s ease-in-out; transform: translateX(100%); }
         #settings-drawer.open { transform: translateX(0); }
         #drawer-overlay { transition: opacity 0.3s ease-in-out; pointer-events: none; opacity: 0; }
         #drawer-overlay.open { pointer-events: auto; opacity: 1; }
+        #answer-text h1,#answer-text h2,#answer-text h3 { font-weight:700; margin:1em 0 .5em; }
+        #answer-text p { margin-bottom:.75em; }
+        #answer-text strong { font-weight:700; }
+        #answer-text ul,#answer-text ol { margin-left:1.5em; margin-bottom:.75em; list-style:disc; }
+        #answer-text li { margin-bottom:.25em; }
+        .collection-node[data-collapsed="true"] + ul { display: none; }
     </style>
 </head>
 <body class="bg-slate-50 h-screen flex flex-col font-sans text-slate-900 overflow-hidden">
     <div id="drawer-overlay" class="fixed inset-0 bg-black/20 z-40 transition-opacity"></div>
-    
+
     <!-- Settings Drawer -->
     <div id="settings-drawer" class="fixed top-0 right-0 h-full w-80 bg-white shadow-2xl z-50 p-6 flex flex-col">
         <div class="flex justify-between items-center mb-8">
             <h2 class="text-lg font-bold flex items-center"><i class="fas fa-cog mr-2 text-slate-400"></i>Settings</h2>
             <button id="close-settings" class="text-slate-400 hover:text-slate-600 transition"><i class="fas fa-times"></i></button>
         </div>
-        
+
         <div class="flex-1 space-y-6 overflow-y-auto pr-2 custom-scrollbar">
-            <!-- LLM Section -->
             <section class="space-y-4">
                 <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest border-b pb-1">LLM Configuration</h3>
                 <div>
@@ -55,17 +48,12 @@
                         <option value="gemini">Google Gemini</option>
                         <option value="custom">Custom / Other</option>
                     </select>
-
                     <label class="block text-xs font-bold text-slate-500 mb-1">Model</label>
-                    <select id="setting-model" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                    </select>
-                    <!-- 仅 custom provider 时显示 -->
-                    <input type="text" id="setting-model-custom" placeholder="e.g. openai/my-model" 
+                    <select id="setting-model" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                    <input type="text" id="setting-model-custom" placeholder="e.g. openai/my-model"
                         class="hidden w-full mt-2 border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-
                     <label class="block text-xs font-bold text-slate-500 mb-1 mt-3">
-                        Summary Model 
-                        <span class="font-normal text-slate-400 ml-1">for evidence scoring (optional)</span>
+                        Summary Model <span class="font-normal text-slate-400 ml-1">for evidence scoring</span>
                     </label>
                     <select id="setting-summary-provider" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none mb-2">
                         <option value="same">— Same as main model —</option>
@@ -73,44 +61,26 @@
                         <option value="kimi">Kimi (Moonshot)</option>
                         <option value="openai">OpenAI</option>
                     </select>
-                    <select id="setting-summary-model" class="hidden w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                    </select>
+                    <select id="setting-summary-model" class="hidden w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select>
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-500 mb-1">API Key</label>
-                    <input type="password" id="setting-key" placeholder="Leave blank to use .env" 
+                    <input type="password" id="setting-key" placeholder="Leave blank to use .env"
                         class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-500 mb-1">API Base URL</label>
-                    <input type="text" id="setting-base" placeholder="Optional custom endpoint" 
+                    <input type="text" id="setting-base" placeholder="Optional custom endpoint"
                         class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                    <p class="text-[10px] text-slate-400 mt-1">
-                        Auto-filled for Kimi. For other OpenAI-compatible services, enter manually.
-                    </p>
                 </div>
             </section>
 
-            <!-- Parsing Section -->
             <section class="space-y-4">
-                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest border-b pb-1">Parsing (Multimodal)</h3>
-                <div>
-                    <label class="block text-xs font-bold text-slate-500 mb-1">Parsing Strategy</label>
-                    <select id="setting-multimodal" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                        <option value="0">0 - Text Only (Recommended)</option>
-                        <option value="2">2 - Multimodal (No Enrichment)</option>
-                        <option value="1">1 - Multimodal + Enrichment (OpenAI Key required)</option>
-                    </select>
-                </div>
-            </section>
-
-            <!-- Retrieval Section -->
-            <section class="space-y-4">
-                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest border-b pb-1">Retrieval (RAG)</h3>
+                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest border-b pb-1">Retrieval Settings</h3>
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-xs font-bold text-slate-500 mb-1">Evidence K</label>
-                        <input type="number" id="setting-k" value="10" min="5" max="30"
+                        <input type="number" id="setting-k" value="50" min="5" max="200"
                             class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                     </div>
                     <div>
@@ -120,14 +90,13 @@
                     </div>
                 </div>
             </section>
-
-            <div class="bg-blue-50 p-3 rounded-lg border border-blue-100 text-[10px] text-blue-700 leading-normal">
-                <i class="fas fa-info-circle mr-1"></i>
-                Settings are session-only. Key Priority: Settings > .env > Env vars.
-            </div>
         </div>
-        
-        <div class="pt-6 border-t mt-6">
+
+        <div class="pt-6 border-t mt-6 space-y-3">
+            <button id="test-llm-btn" class="w-full border border-slate-200 hover:bg-slate-50 text-slate-700 py-2 rounded-md text-sm font-bold transition flex items-center justify-center space-x-2">
+                <i class="fas fa-plug text-slate-400"></i><span>Test Connection</span>
+            </button>
+            <div id="test-status" class="text-[10px] text-center hidden break-words p-2 rounded bg-slate-50"></div>
             <button id="apply-settings" class="w-full bg-slate-800 hover:bg-slate-900 text-white py-2 rounded-md text-sm font-bold transition">Apply Settings</button>
         </div>
     </div>
@@ -139,7 +108,7 @@
         </div>
         <div class="flex items-center space-x-4">
             <div class="flex items-center space-x-2 border-r pr-4 border-slate-200">
-                <span id="selected-summary" class="text-sm font-medium text-slate-500">Selected: 0 papers</span>
+                <span id="selected-summary" class="text-sm font-medium text-slate-500">Auto-retrieval mode</span>
                 <button id="clear-selection-btn" class="text-xs text-red-500 hover:text-red-700 hover:underline transition hidden">Clear Selection</button>
             </div>
             <button id="open-settings" class="text-slate-400 hover:text-slate-600 p-2 transition" title="Settings"><i class="fas fa-cog text-xl"></i></button>
@@ -147,7 +116,7 @@
     </header>
 
     <main class="flex-1 min-h-0 flex overflow-hidden">
-        <!-- 左侧目录树 -->
+        <!-- Zotero Tree -->
         <aside class="w-80 border-r border-slate-200 bg-white flex flex-col">
             <div class="p-4 space-y-4">
                 <div class="relative">
@@ -155,9 +124,6 @@
                         class="w-full bg-slate-100 border-none rounded-md py-2 pl-9 pr-3 text-sm focus:ring-2 focus:ring-blue-500 transition">
                     <i class="fas fa-search absolute left-3 top-2.5 text-slate-400 text-sm"></i>
                 </div>
-                <button id="load-zotero-btn" class="w-full border border-slate-200 hover:bg-slate-50 py-1.5 rounded-md text-sm font-medium transition flex items-center justify-center space-x-2">
-                    <i class="fas fa-sync-alt text-slate-500"></i><span>Reload Zotero Library</span>
-                </button>
             </div>
             <div id="tree-container" class="flex-1 overflow-y-auto p-2 custom-scrollbar">
                 <div id="tree-loading" class="flex flex-col items-center justify-center h-40 text-slate-400">
@@ -166,454 +132,188 @@
             </div>
         </aside>
 
-        <!-- 右侧区域 -->
+        <!-- Chat Area -->
         <section class="flex-1 min-h-0 flex flex-col bg-slate-50 overflow-hidden">
             <div class="p-6 bg-white border-b border-slate-200">
                 <div class="max-w-3xl mx-auto">
                     <div class="mb-4">
-                        <textarea id="question" rows="3" 
+                        <textarea id="question" rows="3"
                             class="w-full border border-slate-200 rounded-xl p-4 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition resize-none shadow-sm"
-                            placeholder="Ask a scientific question based on selected literature..."></textarea>
+                            placeholder="Ask a scientific question..."></textarea>
                     </div>
-                    
+
                     <div class="flex items-center space-x-2 mb-3">
-                        <select id="prompt-template-select" 
+                        <select id="prompt-template-select"
                             class="border border-slate-200 rounded-md px-3 py-1.5 text-xs text-slate-600 focus:ring-2 focus:ring-blue-500 outline-none bg-white">
                             <option value="">Loading templates...</option>
                         </select>
-                        <button id="edit-prompt-btn" 
-                            class="text-slate-400 hover:text-slate-600 transition text-xs px-2 py-1.5 border border-slate-200 rounded-md bg-white" 
-                            title="View / edit template">
-                            <i class="fas fa-pen"></i>
-                        </button>
-                        <button id="save-prompt-btn"
-                            class="text-slate-400 hover:text-emerald-600 transition text-xs px-2 py-1.5 border border-slate-200 rounded-md bg-white" 
-                            title="Save current template as new">
-                            <i class="fas fa-save"></i>
-                        </button>
+                        <button id="edit-prompt-btn" class="text-slate-400 hover:text-slate-600 transition text-xs px-2 py-1.5 border border-slate-200 rounded-md bg-white" title="Edit template"><i class="fas fa-pen"></i></button>
                     </div>
 
-                    <!-- 编辑区（默认折叠，点 edit 按钮展开） -->
-                    <div id="prompt-edit-panel" class="hidden mb-3 space-y-2">
-                        <textarea id="prompt-content-input" rows="3" 
-                            class="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none resize-none leading-relaxed text-slate-700" 
-                            placeholder="Edit template... Variables: {text} {question} {citation} {summary_length}"></textarea>
-                        <div class="flex items-center space-x-2">
-                            <input type="text" id="prompt-save-name" placeholder="Name to save as..." 
-                                class="flex-1 border border-slate-200 rounded-md px-3 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
-                            <button id="confirm-save-prompt-btn" 
-                                class="bg-slate-700 hover:bg-slate-800 text-white px-3 py-1.5 rounded-md text-xs font-bold transition">
-                                Save
-                            </button>
-                            <span id="prompt-save-status" class="text-[10px] hidden"></span>
-                        </div>
+                    <div id="prompt-edit-panel" class="hidden mb-3">
+                        <textarea id="prompt-content-input" rows="4" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-700"></textarea>
                     </div>
 
                     <div class="flex justify-between items-center">
                         <div class="flex space-x-2">
                             <div id="llm-badge" class="px-2 py-1 bg-slate-100 rounded text-[10px] text-slate-500 font-mono">Model: deepseek/deepseek-chat</div>
-                            <div id="vision-badge" class="hidden px-2 py-1 bg-blue-50 rounded text-[10px] text-blue-600 font-bold font-mono">Vision ON</div>
+                            <div id="retrieval-badge" class="px-2 py-1 bg-slate-100 rounded text-[10px] text-slate-400 font-mono">Auto-retrieval</div>
                         </div>
-                        <div class="flex space-x-3">
-                            <button id="analyse-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-lg font-bold transition shadow-md flex items-center space-x-2" title="Batch Analysis">
-                                <i class="fas fa-microscope"></i><span>Analyse</span>
-                            </button>
-                            <button id="ask-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2.5 rounded-lg font-bold transition shadow-md flex items-center space-x-2" title="RAG Q&A">
-                                <i class="fas fa-search"></i><span>Ask System</span>
-                            </button>
-                        </div>
+                        <button id="ask-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-10 py-2.5 rounded-lg font-bold shadow-md flex items-center space-x-2">
+                            <i class="fas fa-search"></i><span>Ask Research Brain</span>
+                        </button>
                     </div>
                 </div>
             </div>
 
             <div id="result-area" class="flex-1 min-h-0 overflow-y-auto p-8 custom-scrollbar">
                 <div id="welcome-screen" class="h-full flex flex-col items-center justify-center text-slate-400 space-y-4">
-                    <i class="fas fa-microscope text-6xl opacity-20"></i><p class="text-lg">Select literature and ask a question to begin analysis.</p>
-                </div>
-                <div id="error-box" class="hidden max-w-3xl mx-auto p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm mb-6 flex items-start space-x-3">
-                    <i class="fas fa-exclamation-circle mt-0.5"></i><span id="error-msg"></span>
+                    <i class="fas fa-microscope text-6xl opacity-20"></i><p class="text-lg">Ask a question to search across literature.</p>
                 </div>
                 <div id="answer-container" class="hidden max-w-4xl mx-auto space-y-8 pb-12">
                     <article class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-                        <div class="flex items-center justify-between mb-4">
-                            <div class="flex items-center space-x-2 text-blue-600"><i class="fas fa-lightbulb"></i><h2 class="font-bold uppercase tracking-wider text-sm">Synthetic Answer</h2></div>
-                        </div>
-                        <div id="answer-text" class="text-slate-800 text-lg leading-relaxed whitespace-pre-wrap"></div>
+                        <div id="answer-text" class="text-slate-800 text-lg leading-relaxed"></div>
                     </article>
-                    <div class="space-y-4">
-                        <div class="flex items-center space-x-2 text-slate-500 px-2"><i class="fas fa-quote-left text-xs"></i><h2 class="font-bold uppercase tracking-wider text-xs">Supporting Evidence</h2></div>
-                        <div id="citations-list" class="grid grid-cols-1 gap-4"></div>
-                    </div>
+                    <div id="citations-list" class="grid grid-cols-1 gap-4"></div>
                 </div>
             </div>
         </section>
     </main>
 
     <script>
-        // State
         const PROVIDER_MODELS = {
-            deepseek: {
-                apiBase: "",
-                models: [
-                    { value: "deepseek/deepseek-chat", label: "DeepSeek V3 (Chat · 128k)" },
-                    { value: "deepseek/deepseek-reasoner", label: "DeepSeek R1 (Thinking · 128k)" },
-                ]
-            },
-            kimi: {
-                apiBase: "https://api.moonshot.cn/v1",
-                models: [
-                    { value: "openai/kimi-k2.6", label: "Kimi K2.6 (Latest)" },
-                    { value: "openai/kimi-k2.5", label: "Kimi K2.5" },
-                    { value: "openai/kimi-k2-0905-preview", label: "Kimi K2 0905 Preview" },
-                    { value: "openai/kimi-k2-0711-preview", label: "Kimi K2 0711 Preview" },
-                    { value: "openai/kimi-k2-turbo-preview", label: "Kimi K2 Turbo Preview" },
-                    { value: "openai/kimi-k2-thinking", label: "Kimi K2 Thinking" },
-                    { value: "openai/kimi-k2-thinking-turbo", label: "Kimi K2 Thinking Turbo" },
-                    { value: "moonshot/moonshot-v1-auto", label: "Moonshot v1 Auto" },
-                    { value: "moonshot/moonshot-v1-128k", label: "Moonshot v1 128k" },
-                    { value: "moonshot/moonshot-v1-32k", label: "Moonshot v1 32k" },
-                    { value: "moonshot/moonshot-v1-8k", label: "Moonshot v1 8k" },
-                ]
-            },
-            claude: {
-                apiBase: "",
-                models: [
-                    { value: "claude-opus-4-7", label: "Claude Opus 4.7" },
-                    { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
-                    { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
-                ]
-            },
-            openai: {
-                apiBase: "",
-                models: [
-                    { value: "gpt-4o-2024-11-20", label: "GPT-4o (2024-11-20)" },
-                    { value: "gpt-4o-mini", label: "GPT-4o Mini" },
-                    { value: "o3", label: "o3" },
-                    { value: "o4-mini", label: "o4-mini" },
-                ]
-            },
-            gemini: {
-                apiBase: "",
-                models: [
-                    { value: "gemini/gemini-2.5-pro", label: "Gemini 2.5 Pro" },
-                    { value: "gemini/gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-                ]
-            },
-            custom: {
-                apiBase: "",
-                models: []
-            }
+            deepseek: { apiBase: "", models: [{ value: "deepseek/deepseek-chat", label: "DeepSeek V3" }, { value: "deepseek/deepseek-reasoner", label: "DeepSeek R1" }] },
+            kimi: { apiBase: "https://api.moonshot.cn/v1", models: [{ value: "openai/kimi-k2.6", label: "Kimi K2.6" }] },
+            custom: { apiBase: "", models: [] }
         };
 
         let collections = [];
         let selectedDois = new Set();
         let searchKeyword = '';
-        let llmSettings = { llm: "deepseek/deepseek-chat", summary_llm: "", api_key: "", api_base: "", multimodal: 0, evidence_k: 10, max_sources: 5, prompt_template: "" };
+        let llmSettings = { llm: "deepseek/deepseek-chat", summary_llm: "", api_key: "", api_base: "", multimodal: 0, evidence_k: 50, max_sources: 5, prompt_template: "" };
 
-        // DOM
-        const treeContainer = document.getElementById('tree-container'), treeSearch = document.getElementById('tree-search'), loadZoteroBtn = document.getElementById('load-zotero-btn'), askBtn = document.getElementById('ask-btn'), analyseBtn = document.getElementById('analyse-btn'), questionInput = document.getElementById('question'), resultArea = document.getElementById('result-area'), welcomeScreen = document.getElementById('welcome-screen'), answerContainer = document.getElementById('answer-container'), answerText = document.getElementById('answer-text'), citationsList = document.getElementById('citations-list'), errorBox = document.getElementById('error-box'), errorMsg = document.getElementById('error-msg'), selectedSummary = document.getElementById('selected-summary'), clearSelectionBtn = document.getElementById('clear-selection-btn'), llmBadge = document.getElementById('llm-badge'), visionBadge = document.getElementById('vision-badge');
-        const openSettingsBtn = document.getElementById('open-settings'), closeSettingsBtn = document.getElementById('close-settings'), settingsDrawer = document.getElementById('settings-drawer'), drawerOverlay = document.getElementById('drawer-overlay'), applySettingsBtn = document.getElementById('apply-settings'), settingProvider = document.getElementById('setting-provider'), settingModel = document.getElementById('setting-model'), settingModelCustom = document.getElementById('setting-model-custom'), settingKey = document.getElementById('setting-key'), settingBase = document.getElementById('setting-base'), settingMultimodal = document.getElementById('setting-multimodal'), settingK = document.getElementById('setting-k'), settingSources = document.getElementById('setting-sources'), settingSummaryProvider = document.getElementById('setting-summary-provider'), settingSummaryModel = document.getElementById('setting-summary-model');
-        
-        const promptTemplateSelect = document.getElementById('prompt-template-select');
-        const editPromptBtn = document.getElementById('edit-prompt-btn');
-        const savePromptBtn = document.getElementById('save-prompt-btn');
-        const promptEditPanel = document.getElementById('prompt-edit-panel');
-        const promptContentInput = document.getElementById('prompt-content-input');
-        const promptSaveName = document.getElementById('prompt-save-name');
-        const confirmSavePromptBtn = document.getElementById('confirm-save-prompt-btn');
-        const promptSaveStatus = document.getElementById('prompt-save-status');
+        // DOM refs
+        const askBtn = document.getElementById('ask-btn'), questionInput = document.getElementById('question'), welcomeScreen = document.getElementById('welcome-screen'), answerContainer = document.getElementById('answer-container'), answerText = document.getElementById('answer-text'), citationsList = document.getElementById('citations-list'), llmBadge = document.getElementById('llm-badge'), retrievalBadge = document.getElementById('retrieval-badge'), selectedSummary = document.getElementById('selected-summary'), clearSelectionBtn = document.getElementById('clear-selection-btn'), treeContainer = document.getElementById('tree-container'), treeSearch = document.getElementById('tree-search');
+        const openSettingsBtn = document.getElementById('open-settings'), closeSettingsBtn = document.getElementById('close-settings'), settingsDrawer = document.getElementById('settings-drawer'), drawerOverlay = document.getElementById('drawer-overlay'), applySettingsBtn = document.getElementById('apply-settings'), testLlmBtn = document.getElementById('test-llm-btn'), testStatus = document.getElementById('test-status'), settingProvider = document.getElementById('setting-provider'), settingModel = document.getElementById('setting-model'), settingModelCustom = document.getElementById('setting-model-custom'), settingKey = document.getElementById('setting-key'), settingBase = document.getElementById('setting-base'), settingK = document.getElementById('setting-k'), settingSources = document.getElementById('setting-sources'), settingSummaryProvider = document.getElementById('setting-summary-provider'), settingSummaryModel = document.getElementById('setting-summary-model');
+        const promptTemplateSelect = document.getElementById('prompt-template-select'), editPromptBtn = document.getElementById('edit-prompt-btn'), promptEditPanel = document.getElementById('prompt-edit-panel'), promptContentInput = document.getElementById('prompt-content-input');
 
-        function onProviderChange() {
-            const provider = settingProvider.value;
-            const config = PROVIDER_MODELS[provider];
-            
-            // 1. Rebuild models
-            settingModel.innerHTML = '';
-            config.models.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m.value;
-                opt.textContent = m.label;
-                settingModel.appendChild(opt);
-            });
-
-            // 2. Auto-fill API Base
-            if (config.apiBase) {
-                settingBase.value = config.apiBase;
-            } else {
-                // If current base is a known one from other providers, clear it
-                const knownBases = Object.values(PROVIDER_MODELS).map(p => p.apiBase).filter(b => b);
-                if (knownBases.includes(settingBase.value)) {
-                    settingBase.value = '';
-                }
-            }
-
-            // 3. Toggle custom input
-            if (provider === 'custom') {
-                settingModel.classList.add('hidden');
-                settingModelCustom.classList.remove('hidden');
-            } else {
-                settingModel.classList.remove('hidden');
-                settingModelCustom.classList.add('hidden');
-            }
+        // --- Zotero Tree ---
+        async function fetchCollections() {
+            treeContainer.innerHTML = '<div class="text-center p-4 text-slate-400 text-xs">Loading...</div>';
+            try {
+                const res = await fetch('/zotero/collections');
+                const data = await res.json();
+                collections = data.collections; renderTree();
+            } catch (err) { treeContainer.innerHTML = 'Error'; }
         }
 
-        settingProvider.onchange = onProviderChange;
-        
-        settingSummaryProvider.onchange = () => {
-            const p = settingSummaryProvider.value;
-            if (p === 'same') {
-                settingSummaryModel.classList.add('hidden');
-                return;
-            }
-            settingSummaryModel.classList.remove('hidden');
-            const models = PROVIDER_MODELS[p]?.models || [];
-            settingSummaryModel.innerHTML = models
-                .map(m => `<option value="${m.value}">${m.label}</option>`).join('');
-        };
-        
+        function renderTree() {
+            treeContainer.innerHTML = '';
+            const rootCollections = collections.filter(c => !c.parent_id);
+            rootCollections.forEach(col => {
+                const el = createCollectionEl(col);
+                if (el) treeContainer.appendChild(el);
+            });
+        }
+
+        function createCollectionEl(col) {
+            const li = document.createElement('div');
+            const items = col.items.filter(i => i.title.toLowerCase().includes(searchKeyword) || i.doi.toLowerCase().includes(searchKeyword));
+            if (searchKeyword && items.length === 0) return null;
+
+            li.innerHTML = `<div class="collection-node flex items-center py-1 px-2 hover:bg-slate-50 cursor-pointer text-sm font-medium">
+                <i class="fas fa-folder text-amber-400 mr-2"></i><span>${col.name}</span>
+            </div><ul class="ml-4 border-l border-slate-100 pl-2"></ul>`;
+            
+            const ul = li.querySelector('ul');
+            items.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'flex items-start py-1 px-2 text-[12px] hover:bg-blue-50 cursor-pointer';
+                div.innerHTML = `<input type="checkbox" class="mr-2 mt-1" ${selectedDois.has(item.doi) ? 'checked' : ''}><span>${item.title}</span>`;
+                div.onclick = (e) => {
+                    const cb = div.querySelector('input');
+                    if (e.target !== cb) cb.checked = !cb.checked;
+                    if (cb.checked) selectedDois.add(item.doi); else selectedDois.delete(item.doi);
+                    updateSummary();
+                };
+                ul.appendChild(div);
+            });
+            return li;
+        }
+
+        function updateSummary() {
+            selectedSummary.textContent = selectedDois.size > 0 ? `Selected: ${selectedDois.size} papers` : "Auto-retrieval mode";
+            retrievalBadge.textContent = selectedDois.size > 0 ? `Filter: ${selectedDois.size}` : "Auto-retrieval";
+            clearSelectionBtn.classList.toggle('hidden', selectedDois.size === 0);
+        }
+
+        treeSearch.oninput = (e) => { searchKeyword = e.target.value.toLowerCase(); renderTree(); };
+        clearSelectionBtn.onclick = () => { selectedDois.clear(); renderTree(); updateSummary(); };
+
+        // --- Prompts ---
         async function loadPromptTemplates() {
             try {
                 const res = await fetch('/prompts');
                 const data = await res.json();
-                promptTemplateSelect.innerHTML = '<option value="">— Custom (edit below) —</option>';
+                promptTemplateSelect.innerHTML = '<option value="">— Select Template —</option>';
                 data.templates.forEach(t => {
                     const opt = document.createElement('option');
                     opt.value = t.template;
-                    opt.textContent = `${t.name}${t.description ? ' · ' + t.description : ''}`;
+                    opt.textContent = t.name;
                     promptTemplateSelect.appendChild(opt);
                 });
-                // 默认选中 Default 模板
-                const defaultOpt = [...promptTemplateSelect.options].find(o => o.textContent.startsWith('Default'));
-                if (defaultOpt) {
-                    promptTemplateSelect.value = defaultOpt.value;
-                    promptContentInput.value = defaultOpt.value;
-                    llmSettings.prompt_template = defaultOpt.value;
+                if (data.templates.length > 0) {
+                    promptTemplateSelect.value = data.templates[0].template;
+                    promptContentInput.value = data.templates[0].template;
+                    llmSettings.prompt_template = data.templates[0].template;
                 }
-            } catch (e) {
-                promptTemplateSelect.innerHTML = '<option value="">Failed to load</option>';
-            }
+            } catch (e) {}
         }
+        promptTemplateSelect.onchange = () => { llmSettings.prompt_template = promptContentInput.value = promptTemplateSelect.value; };
+        editPromptBtn.onclick = () => promptEditPanel.classList.toggle('hidden');
 
-        promptTemplateSelect.onchange = () => {
-            const val = promptTemplateSelect.value;
-            if (val) promptContentInput.value = val;
-            // 实时更新 llmSettings（不需要点 Apply）
-            llmSettings.prompt_template = val;
-        };
-
-        editPromptBtn.onclick = () => {
-            promptEditPanel.classList.toggle('hidden');
-        };
-
-        savePromptBtn.onclick = () => {
-            // 先展开编辑区，聚焦到 save name 输入框
-            promptEditPanel.classList.remove('hidden');
-            promptSaveName.focus();
-        };
-
-        confirmSavePromptBtn.onclick = async () => {
-            const name = promptSaveName.value.trim();
-            const template = promptContentInput.value.trim();
-            if (!name || !template) return;
-            confirmSavePromptBtn.disabled = true;
-            try {
-                const res = await fetch('/prompts', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, template })
-                });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.detail);
-                promptSaveStatus.textContent = `✓ Saved as "${data.name}"`;
-                promptSaveStatus.className = 'text-[10px] text-emerald-600';
-                promptSaveStatus.classList.remove('hidden');
-                promptSaveName.value = '';
-                await loadPromptTemplates();
-                // 自动选中刚保存的模板
-                const newOpt = [...promptTemplateSelect.options].find(o => o.textContent.startsWith(data.name));
-                if (newOpt) { 
-                    promptTemplateSelect.value = newOpt.value;
-                    llmSettings.prompt_template = newOpt.value; 
-                }
-                setTimeout(() => promptSaveStatus.classList.add('hidden'), 3000);
-            } catch (e) {
-                promptSaveStatus.textContent = `✗ ${e.message}`;
-                promptSaveStatus.className = 'text-[10px] text-red-500';
-                promptSaveStatus.classList.remove('hidden');
-            } finally {
-                confirmSavePromptBtn.disabled = false;
-            }
-        };
-
-        promptContentInput.oninput = () => {
-            // 手动编辑时实时同步到 llmSettings
-            llmSettings.prompt_template = promptContentInput.value.trim();
-            // 取消 select 的高亮选中（用户已偏离模板）
-            promptTemplateSelect.value = '';
-        };
-
-        fetchCollections();
-        onProviderChange(); // Initial fill
-        loadPromptTemplates(); // Load built-in prompts
-
-        openSettingsBtn.onclick = () => { settingsDrawer.classList.add('open'); drawerOverlay.classList.add('open'); };
+        // --- Settings ---
         const closeDrawer = () => { settingsDrawer.classList.remove('open'); drawerOverlay.classList.remove('open'); };
-        closeSettingsBtn.onclick = closeDrawer; drawerOverlay.onclick = closeDrawer;
-        applySettingsBtn.onclick = () => {
-            const provider = settingProvider.value;
-            const modelVal = provider === 'custom' 
-                ? settingModelCustom.value.trim() 
-                : settingModel.value;
+        openSettingsBtn.onclick = () => { settingsDrawer.classList.add('open'); drawerOverlay.classList.add('open'); };
+        closeSettingsBtn.onclick = drawerOverlay.onclick = closeDrawer;
 
-            llmSettings = { 
-                llm: modelVal, 
-                summary_llm: settingSummaryProvider.value === 'same' ? '' : settingSummaryModel.value,
-                api_key: settingKey.value.trim(), 
-                api_base: settingBase.value.trim(), 
-                multimodal: parseInt(settingMultimodal.value),
-                evidence_k: parseInt(settingK.value),
-                max_sources: parseInt(settingSources.value)
-            };
+        function onProviderChange() {
+            const config = PROVIDER_MODELS[settingProvider.value];
+            settingModel.innerHTML = config.models.map(m => `<option value="${m.value}">${m.label}</option>`).join('');
+            settingBase.value = config.apiBase;
+        }
+        settingProvider.onchange = onProviderChange;
+        applySettingsBtn.onclick = () => {
+            llmSettings = { ...llmSettings, llm: settingModel.value, api_key: settingKey.value, api_base: settingBase.value, evidence_k: parseInt(settingK.value), max_sources: parseInt(settingSources.value) };
             llmBadge.textContent = `Model: ${llmSettings.llm}`;
-            visionBadge.classList.toggle('hidden', llmSettings.multimodal === 0);
-            visionBadge.textContent = llmSettings.multimodal === 1 ? 'Vision+Enrich' : 'Vision ON';
             closeDrawer();
         };
 
-        clearSelectionBtn.onclick = () => { selectedDois.clear(); renderTree(); updateSummary(); };
-        loadZoteroBtn.onclick = fetchCollections;
-        treeSearch.oninput = (e) => { searchKeyword = e.target.value.toLowerCase(); renderTree(); };
-        askBtn.onclick = handleAsk;
-        analyseBtn.onclick = handleAnalyse;
-
-        async function fetchCollections() {
-            treeContainer.innerHTML = '<div class="flex flex-col items-center justify-center h-40 text-slate-400"><i class="fas fa-circle-notch fa-spin text-2xl mb-2"></i><span class="text-xs">Loading Zotero...</span></div>';
+        // --- Ask ---
+        askBtn.onclick = async () => {
+            const question = questionInput.value.trim(); if (!question) return;
+            askBtn.disabled = true; askBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Asking...</span>';
             try {
-                const res = await fetch('/zotero/collections');
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.detail || 'Fetch error');
-                collections = data.collections; renderTree();
-            } catch (err) { treeContainer.innerHTML = `<div class="p-4 text-red-500 text-xs text-center">${err.message}</div>`; }
-        }
-
-        function renderTree() {
-            if (collections.length === 0) return;
-            treeContainer.innerHTML = '';
-            const colMap = {};
-            collections.forEach(c => colMap[c.id] = { ...c, children: [], filteredItems: [] });
-            const rootCollections = [];
-            collections.forEach(c => {
-                const node = colMap[c.id];
-                node.filteredItems = c.items.filter(i => i.title.toLowerCase().includes(searchKeyword) || i.doi.toLowerCase().includes(searchKeyword));
-                if (c.parent_id && colMap[c.parent_id]) colMap[c.parent_id].children.push(node);
-                else rootCollections.push(node);
-            });
-            const fragment = document.createDocumentFragment();
-            rootCollections.forEach(col => { const el = createCollectionEl(col); if (el) fragment.appendChild(el); });
-            if (fragment.children.length === 0) treeContainer.innerHTML = '<div class="p-8 text-center text-slate-400 text-xs">No matching results</div>';
-            else treeContainer.appendChild(fragment);
-        }
-
-        function createCollectionEl(col) {
-            const hasVisibleItems = col.filteredItems.length > 0 || col.children.some(child => hasVisibleItemsRecursive(child));
-            if (searchKeyword && !hasVisibleItems) return null;
-            const li = document.createElement('div'); li.className = 'mb-1';
-            const header = document.createElement('div'); header.className = 'collection-node flex items-center group py-1 px-2 rounded hover:bg-slate-50 cursor-pointer transition';
-            header.dataset.collapsed = "false";
-            header.innerHTML = `<i class="fas fa-chevron-down w-4 text-slate-400 text-[10px] transition-transform"></i><i class="fas fa-folder text-amber-400 mr-2"></i><span class="flex-1 text-sm font-medium truncate">${col.name}</span><span class="text-[10px] text-slate-400 ml-2 bg-slate-100 px-1.5 py-0.5 rounded-full">${col.items.length}</span><button class="bulk-select hidden group-hover:block ml-2 text-blue-500 hover:text-blue-700 text-[10px]">All</button>`;
-            header.querySelector('.bulk-select').onclick = (e) => {
-                e.stopPropagation(); const allChecked = col.items.every(item => selectedDois.has(item.doi));
-                col.items.forEach(item => { if (item.has_pdf) { if (allChecked) selectedDois.delete(item.doi); else selectedDois.add(item.doi); } });
-                renderTree(); updateSummary();
-            };
-            header.onclick = () => { const collapsed = header.dataset.collapsed === "true"; header.dataset.collapsed = (!collapsed).toString(); header.querySelector('.fa-chevron-down').style.transform = collapsed ? 'rotate(0deg)' : 'rotate(-90deg)'; };
-            const ul = document.createElement('ul'); ul.className = 'ml-4 mt-1 border-l border-slate-100 pl-2';
-            col.children.forEach(child => { const el = createCollectionEl(child); if (el) ul.appendChild(el); });
-            col.filteredItems.forEach(item => {
-                const div = document.createElement('div'); div.className = `flex items-start py-1.5 px-2 rounded transition ${item.has_pdf ? 'hover:bg-blue-50 cursor-pointer' : 'opacity-40'}`;
-                div.innerHTML = `<input type="checkbox" class="doi-checkbox mt-1 mr-3 rounded border-slate-300 text-blue-600" ${selectedDois.has(item.doi) ? 'checked' : ''} ${item.has_pdf ? '' : 'disabled'}><div class="flex-1 min-w-0"><div class="text-[13px] leading-tight font-medium text-slate-700">${item.title}</div><div class="text-[10px] text-slate-400 mt-1 flex justify-between"><span>${item.year}</span> <span class="truncate ml-2">${item.doi}</span></div></div>`;
-                div.onclick = (e) => { if (item.has_pdf && e.target.type !== 'checkbox') { const cb = div.querySelector('input'); cb.checked = !cb.checked; if (cb.checked) selectedDois.add(item.doi); else selectedDois.delete(item.doi); updateSummary(); } };
-                div.querySelector('input').onchange = (e) => { if (e.target.checked) selectedDois.add(item.doi); else selectedDois.delete(item.doi); updateSummary(); };
-                ul.appendChild(div);
-            });
-            li.appendChild(header); li.appendChild(ul); return li;
-        }
-
-        function hasVisibleItemsRecursive(col) { return col.filteredItems.length > 0 || col.children.some(child => hasVisibleItemsRecursive(child)); }
-        function updateSummary() { selectedSummary.textContent = `Selected: ${selectedDois.size} papers`; clearSelectionBtn.classList.toggle('hidden', selectedDois.size === 0); }
-
-        async function handleAsk() {
-            const question = questionInput.value.trim(); if (!question) return; if (selectedDois.size === 0) { alert("Select at least one paper."); return; }
-            askBtn.disabled = true; askBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i><span>Asking...</span>';
-            errorBox.classList.add('hidden'); welcomeScreen.classList.add('hidden'); answerContainer.classList.add('hidden');
-            try {
-                const res = await fetch('/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question, dois: Array.from(selectedDois), llm_settings: llmSettings }) });
-                const data = await res.json(); if (!res.ok) throw new Error(data.detail || 'Error');
-                answerText.textContent = data.answer; citationsList.innerHTML = '';
-                
-                data.citations.forEach((cit) => {
-                    const meta = cit.metadata || {};
-                    const authors = Array.isArray(meta.authors) && meta.authors.length              
-                        ? meta.authors.slice(0, 3).join(', ') + (meta.authors.length > 3 ? ' et al.' : '')                                                                                
-                        : 'Unknown authors';                            
-                    const year = meta.year || '';                                                   
-                    const journal = meta.journal || '';                 
-                    const doi = meta.doi || cit.doc_id || '';                                       
-                    const doiUrl = doi.startsWith('http') ? doi : `https://doi.org/${doi}`;
-                    const rcsScore = cit.rcs_score ?? 0;                                            
-                    const scoreColor = rcsScore >= 8 ? 'bg-emerald-100 text-emerald-700'
-                        : rcsScore >= 5 ? 'bg-amber-100 text-amber-700'                             
-                        : 'bg-slate-100 text-slate-500';                
-                                                                                                    
-                    const card = document.createElement('div');         
-                    card.className = 'bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm';                                                                           
-                    card.innerHTML = `
-                        <details class="group">                                                     
-                            <summary class="flex items-center justify-between p-4 cursor-pointer list-none hover:bg-slate-50 transition">                                              
-                                <div class="flex items-center space-x-3 min-w-0">
-                                    <span class="flex-shrink-0 flex items-center justify-center bg-blue-100 text-blue-700 w-7 h-7 rounded text-xs font-bold">${cit.display_index}</span>                                                
-                                    <div class="min-w-0">                                           
-                                        <div class="text-sm font-bold text-slate-800 truncate">${meta.title || doi}</div>
-                                        <div class="text-[11px] text-slate-400 mt-0.5">${authors}${year ? ' · ' + year : ''}${journal ? ' · ' + journal : ''}</div>  
-                                    </div>
-                                </div>                                                              
-                                <div class="flex items-center space-x-2 flex-shrink-0 ml-3">
-                                    <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${scoreColor}">RCS ${rcsScore}</span>                                                 
-                                    <i class="fas fa-chevron-down text-slate-300 group-open:rotate-180 transition-transform text-xs"></i>                              
-                                </div>                                  
-                            </summary>                                                              
-                            <div class="px-4 pb-4 border-t border-slate-100 pt-3 space-y-2">
-                                <div class="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border-l-4 border-blue-400 italic leading-relaxed">"${cit.snippet || ''}..."</div>    
-                                ${doi ? `<a href="${doiUrl}" target="_blank" class="text-[10px] text-blue-500 hover:underline font-mono">DOI: ${doi}</a>` : ''}                       
-                            </div>                                      
-                        </details>`;                                                                
-                    citationsList.appendChild(card);                    
+                const res = await fetch('/ask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question, dois: selectedDois.size > 0 ? Array.from(selectedDois) : null, llm_settings: llmSettings })
                 });
+                const data = await res.json();
+                welcomeScreen.classList.add('hidden'); answerContainer.classList.remove('hidden');
+                answerText.innerHTML = marked.parse(data.answer);
+                citationsList.innerHTML = data.citations.map(c => `<div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 text-xs">
+                    <div class="font-bold text-blue-600 mb-2">[${c.display_index}] ${c.metadata.title || c.doc_id}</div>
+                    <div class="italic text-slate-600">"${c.snippet}..."</div>
+                </div>`).join('');
+            } catch (err) { alert(err.message); }
+            finally { askBtn.disabled = false; askBtn.innerHTML = '<i class="fas fa-search"></i><span>Ask Research Brain</span>'; }
+        };
 
-                // 显示结构校验结果（仅在有问题时）                                                 
-                if (data.structural_check && !data.structural_check.passed) {
-                    const warn = document.createElement('div');                                     
-                    warn.className = 'max-w-4xl mx-auto p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 mb-4';                                              
-                    const issues = [...data.structural_check.issues,
-                        ...data.structural_check.uncited_sentences.map(s => `Uncited: "${s.slice(0, 60)}..."`)                                                                            
-                    ].join(' | ');                                                                  
-                    warn.innerHTML = `<i class="fas fa-exclamation-triangle mr-1"></i><strong>Citation check:</strong> ${issues}`;                                
-                    answerContainer.prepend(warn);
-                }
-                answerContainer.classList.remove('hidden');
-            } catch (err) { errorMsg.textContent = err.message; errorBox.classList.remove('hidden'); }
-            finally { askBtn.disabled = false; askBtn.innerHTML = '<i class="fas fa-search"></i><span>Ask System</span>'; }
-        }
-
-        async function handleAnalyse() {
-            if (selectedDois.size === 0) { alert("Select papers."); return; }
-            analyseBtn.disabled = true; analyseBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i><span>Analysing...</span>';
-            try {
-                const res = await fetch('/analyse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dois: Array.from(selectedDois) }) });
-                const data = await res.json(); alert(data.message + "\n\nSelected: " + data.dois.length);
-            } catch (err) { alert("Failed: " + err.message); }
-            finally { analyseBtn.disabled = false; analyseBtn.innerHTML = '<i class="fas fa-microscope"></i><span>Analyse</span>'; }
-        }
+        // Init
+        onProviderChange();
+        loadPromptTemplates();
+        fetchCollections();
     </script>
 </body>
 </html>
