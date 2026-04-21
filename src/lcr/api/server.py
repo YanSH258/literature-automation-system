@@ -86,7 +86,7 @@ async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]]
         embedding="st-BAAI/bge-small-en-v1.5",
         parsing={
             "use_doc_details": use_multimodal, 
-            "vision_llm": target_llm if use_multimodal else None
+            "multimodal": "on with enrichment" if use_multimodal else False
         },
         agent={
             "agent_llm": target_llm,
