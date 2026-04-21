@@ -30,7 +30,7 @@ app = FastAPI(title="LCR · Literature Citation-RAG")
 
 # 挂载静态文件目录
 static_dir = Path(__file__).parent / "static"
-PROMPTS_DIR = Path(__file__).resolve().parents[4] / "prompts"
+PROMPTS_DIR = Path(__file__).resolve().parents[3] / "prompts"
 PROMPTS_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
@@ -148,6 +148,7 @@ async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]]
             "search_count": 3, # 限制 Agent 最大搜索次数，防止死循环
             "index": {
                 "paper_directory": paper_dir,
+                "index_directory": str(Path(tempfile.gettempdir()) / f"lcr_index_{doi_hash if dois else 'default'}"),
                 "recurse_subdirectories": False,
             },
         },
@@ -160,7 +161,7 @@ async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]]
     try:
         result = await asyncio.wait_for(
             ask(search_question, settings=settings),
-            timeout=120.0 # 文献阅读可能耗时，给 120 秒
+            timeout=300.0 # 首次 embed 需时较长，给 300 秒
         )
     except asyncio.TimeoutError:
         return {"answer": "The analysis timed out. Please try selecting fewer papers or a simpler question.", "citations": []}
