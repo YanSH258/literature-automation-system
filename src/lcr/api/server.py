@@ -7,6 +7,8 @@ import tempfile
 import asyncio
 import litellm
 import hashlib
+import json
+import glob as glob_module
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -28,6 +30,8 @@ app = FastAPI(title="LCR · Literature Citation-RAG")
 
 # 挂载静态文件目录
 static_dir = Path(__file__).parent / "static"
+PROMPTS_DIR = Path(__file__).resolve().parents[4] / "prompts"
+PROMPTS_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 class LLMSettings(BaseModel):
@@ -37,6 +41,7 @@ class LLMSettings(BaseModel):
     multimodal: int = 0
     evidence_k: int = 10
     max_sources: int = 5
+    prompt_template: str = ""
 
 class AskRequest(BaseModel):
     question: str
@@ -119,6 +124,16 @@ async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]]
     evidence_k_val = llm_settings.evidence_k if llm_settings else 10
     max_sources_val = llm_settings.max_sources if llm_settings else 5
 
+    # 优先使用用户传入的自定义模板，否则用默认值
+    base_summary_prompt = (
+        llm_settings.prompt_template.strip()
+        if llm_settings and llm_settings.prompt_template.strip()
+        else "Summarize the text relevant to the question: {question}. Text: {text}. Focus on objective findings."
+    )
+    # 中文模式追加语言指令（仅当模板末尾没有中文指令时）
+    if answer_language_instruction and "中文" not in base_summary_prompt:
+        base_summary_prompt += answer_language_instruction
+
     settings = Settings(
         llm=target_llm,
         summary_llm=target_llm,
@@ -137,7 +152,7 @@ async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]]
             },
         },
         prompts={
-            "summary": "Summarize the text relevant to the question: {question}. Text: {text}. Focus on objective findings." + answer_language_instruction
+            "summary": base_summary_prompt
         }
     )
 
@@ -194,6 +209,52 @@ async def read_index():
     if not index_path.exists():
         raise HTTPException(status_code=404, detail="index.html not found")
     return index_path.read_text(encoding="utf-8")
+
+@app.get("/prompts")
+async def list_prompts():
+    """列出所有可用的 prompt 模板。"""
+    templates = []
+    for path in sorted(PROMPTS_DIR.glob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            templates.append({
+                "filename": path.name,
+                "name": data.get("name", path.stem),
+                "description": data.get("description", ""),
+                "template": data.get("template", ""),
+            })
+        except Exception:
+            pass
+    return {"templates": templates}
+
+@app.post("/prompts")
+async def save_prompt(payload: dict):
+    """保存新的 prompt 模板。"""
+    name = payload.get("name", "").strip()
+    template = payload.get("template", "").strip()
+    if not name or not template:
+        raise HTTPException(status_code=400, detail="name and template are required")
+    # 校验变量：只允许 {text} {question} {citation} {summary_length}
+    import string
+    allowed = {"text", "question", "citation", "summary_length"}
+    try:
+        fields = {f[1] for f in string.Formatter().parse(template) if f[1]}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid template syntax: {e}")
+    invalid = fields - allowed
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid variables: {invalid}. Allowed: {allowed}"
+        )
+    filename = name.lower().replace(" ", "_").replace("/", "_") + ".json"
+    path = PROMPTS_DIR / filename
+    path.write_text(json.dumps({
+        "name": name,
+        "description": payload.get("description", ""),
+        "template": template,
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"filename": filename, "name": name}
 
 @app.get("/zotero/collections")
 async def get_zotero_collections():

@@ -107,6 +107,34 @@
                     </div>
                 </div>
             </section>
+
+            <!-- Prompt Template Section -->
+            <section class="space-y-4">
+                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest border-b pb-1">Prompt Template</h3>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">Select Template</label>
+                    <select id="setting-prompt-select" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="">Loading...</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">
+                        Template Content
+                        <span class="font-normal text-slate-400 ml-1">({text} {question} {citation} {summary_length})</span>
+                    </label>
+                    <textarea id="setting-prompt-content" rows="4" 
+                        class="w-full border border-slate-200 rounded-md px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none resize-none leading-relaxed" 
+                        placeholder="Edit template or select one above..."></textarea>
+                </div>
+                <div class="flex space-x-2">
+                    <input type="text" id="setting-prompt-savename" placeholder="New template name..." 
+                        class="flex-1 border border-slate-200 rounded-md px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+                    <button id="save-prompt-btn" class="bg-slate-700 hover:bg-slate-800 text-white px-3 py-2 rounded-md text-xs font-bold transition flex-shrink-0">
+                        Save
+                    </button>
+                </div>
+                <p id="prompt-save-status" class="text-[10px] hidden"></p>
+            </section>
             
             <div class="bg-blue-50 p-3 rounded-lg border border-blue-100 text-[10px] text-blue-700 leading-normal">
                 <i class="fas fa-info-circle mr-1"></i>
@@ -261,11 +289,11 @@
         let collections = [];
         let selectedDois = new Set();
         let searchKeyword = '';
-        let llmSettings = { llm: "deepseek/deepseek-chat", api_key: "", api_base: "", multimodal: 0, evidence_k: 10, max_sources: 5 };
+        let llmSettings = { llm: "deepseek/deepseek-chat", api_key: "", api_base: "", multimodal: 0, evidence_k: 10, max_sources: 5, prompt_template: "" };
 
         // DOM
         const treeContainer = document.getElementById('tree-container'), treeSearch = document.getElementById('tree-search'), loadZoteroBtn = document.getElementById('load-zotero-btn'), askBtn = document.getElementById('ask-btn'), analyseBtn = document.getElementById('analyse-btn'), questionInput = document.getElementById('question'), resultArea = document.getElementById('result-area'), welcomeScreen = document.getElementById('welcome-screen'), answerContainer = document.getElementById('answer-container'), answerText = document.getElementById('answer-text'), citationsList = document.getElementById('citations-list'), errorBox = document.getElementById('error-box'), errorMsg = document.getElementById('error-msg'), selectedSummary = document.getElementById('selected-summary'), clearSelectionBtn = document.getElementById('clear-selection-btn'), llmBadge = document.getElementById('llm-badge'), visionBadge = document.getElementById('vision-badge');
-        const openSettingsBtn = document.getElementById('open-settings'), closeSettingsBtn = document.getElementById('close-settings'), settingsDrawer = document.getElementById('settings-drawer'), drawerOverlay = document.getElementById('drawer-overlay'), applySettingsBtn = document.getElementById('apply-settings'), settingProvider = document.getElementById('setting-provider'), settingModel = document.getElementById('setting-model'), settingModelCustom = document.getElementById('setting-model-custom'), settingKey = document.getElementById('setting-key'), settingBase = document.getElementById('setting-base'), settingMultimodal = document.getElementById('setting-multimodal'), settingK = document.getElementById('setting-k'), settingSources = document.getElementById('setting-sources');
+        const openSettingsBtn = document.getElementById('open-settings'), closeSettingsBtn = document.getElementById('close-settings'), settingsDrawer = document.getElementById('settings-drawer'), drawerOverlay = document.getElementById('drawer-overlay'), applySettingsBtn = document.getElementById('apply-settings'), settingProvider = document.getElementById('setting-provider'), settingModel = document.getElementById('setting-model'), settingModelCustom = document.getElementById('setting-model-custom'), settingKey = document.getElementById('setting-key'), settingBase = document.getElementById('setting-base'), settingMultimodal = document.getElementById('setting-multimodal'), settingK = document.getElementById('setting-k'), settingSources = document.getElementById('setting-sources'), settingPromptSelect = document.getElementById('setting-prompt-select'), settingPromptContent = document.getElementById('setting-prompt-content'), settingPromptSavename = document.getElementById('setting-prompt-savename'), savePromptBtn = document.getElementById('save-prompt-btn'), promptSaveStatus = document.getElementById('prompt-save-status');
 
         function onProviderChange() {
             const provider = settingProvider.value;
@@ -302,8 +330,66 @@
         }
 
         settingProvider.onchange = onProviderChange;
+        
+        async function loadPromptTemplates() {
+            try {
+                const res = await fetch('/prompts');
+                const data = await res.json();
+                settingPromptSelect.innerHTML = '<option value="">— Custom (edit below) —</option>';
+                data.templates.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t.template;
+                    opt.textContent = `${t.name}${t.description ? ' · ' + t.description : ''}`;
+                    settingPromptSelect.appendChild(opt);
+                });
+                // 默认选中 Default 模板
+                const defaultOpt = [...settingPromptSelect.options].find(o => o.textContent.startsWith('Default'));
+                if (defaultOpt) {
+                    settingPromptSelect.value = defaultOpt.value;
+                    settingPromptContent.value = defaultOpt.value;
+                }
+            } catch (e) {
+                settingPromptSelect.innerHTML = '<option value="">Failed to load</option>';
+            }
+        }
+
+        settingPromptSelect.onchange = () => {
+            if (settingPromptSelect.value) {
+                settingPromptContent.value = settingPromptSelect.value;
+            }
+        };
+
+        savePromptBtn.onclick = async () => {
+            const name = settingPromptSavename.value.trim();
+            const template = settingPromptContent.value.trim();
+            if (!name || !template) return;
+            savePromptBtn.disabled = true;
+            try {
+                const res = await fetch('/prompts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, template })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail);
+                promptSaveStatus.textContent = `✓ Saved as "${data.name}"`;
+                promptSaveStatus.className = 'text-[10px] text-emerald-600';
+                promptSaveStatus.classList.remove('hidden');
+                settingPromptSavename.value = '';
+                await loadPromptTemplates();
+                setTimeout(() => promptSaveStatus.classList.add('hidden'), 3000);
+            } catch (e) {
+                promptSaveStatus.textContent = `✗ ${e.message}`;
+                promptSaveStatus.className = 'text-[10px] text-red-500';
+                promptSaveStatus.classList.remove('hidden');
+            } finally {
+                savePromptBtn.disabled = false;
+            }
+        };
+
         fetchCollections();
         onProviderChange(); // Initial fill
+        loadPromptTemplates(); // Load built-in prompts
 
         openSettingsBtn.onclick = () => { settingsDrawer.classList.add('open'); drawerOverlay.classList.add('open'); };
         const closeDrawer = () => { settingsDrawer.classList.remove('open'); drawerOverlay.classList.remove('open'); };
@@ -320,7 +406,8 @@
                 api_base: settingBase.value.trim(), 
                 multimodal: parseInt(settingMultimodal.value),
                 evidence_k: parseInt(settingK.value),
-                max_sources: parseInt(settingSources.value)
+                max_sources: parseInt(settingSources.value),
+                prompt_template: settingPromptContent.value.trim()
             };
             llmBadge.textContent = `Model: ${llmSettings.llm}`;
             visionBadge.classList.toggle('hidden', llmSettings.multimodal === 0);

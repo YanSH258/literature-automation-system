@@ -1,0 +1,5 @@
+{
+  "name": "Chinese Output",
+  "description": "Answer in Simplified Chinese",
+  "template": "Summarize the text relevant to the question: {question}. Text: {text}. Focus on objective findings. 请用简体中文回答。"
+}
