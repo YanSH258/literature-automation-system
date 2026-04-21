@@ -2,7 +2,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
-import re
 import tempfile
 import asyncio
 import litellm
@@ -36,6 +35,7 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 class LLMSettings(BaseModel):
     llm: str = "deepseek/deepseek-chat"
+    summary_llm: str = ""  # 留空时与 llm 相同，用于 RCS 打分的便宜模型
     api_key: str = ""
     api_base: str = ""
     multimodal: int = 0
@@ -48,24 +48,6 @@ class AskRequest(BaseModel):
     paper_dir: str = "./papers"
     dois: Optional[List[str]] = None
     llm_settings: Optional[LLMSettings] = None
-
-async def translate_to_english(text: str, llm: str) -> str:
-    """如果检测到中文，将其翻译为英文以便搜索。"""
-    try:
-        resp = await litellm.acompletion(
-            model=llm,
-            messages=[{
-                "role": "user",
-                "content": f"Translate the following scientific query into concise English for literature search. Return ONLY the English translation, no other text:\n\n{text}"
-            }],
-            temperature=0
-        )
-        translation = resp.choices[0].message.content.strip()
-        print(f"Translation: '{text}' -> '{translation}'")
-        return translation
-    except Exception as e:
-        print(f"Translation failed: {e}")
-        return text
 
 async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]] = None, llm_settings: Optional[LLMSettings] = None) -> dict:
     # 1. 环境与路径准备
@@ -111,13 +93,12 @@ async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]]
         # 全局设置 litellm.api_base 以便支持自定义服务商
         litellm.api_base = llm_settings.api_base if llm_settings.api_base else None
 
-    # 3. 中文提问预处理
+    target_summary_llm = (llm_settings.summary_llm.strip()
+                          if llm_settings and llm_settings.summary_llm.strip()
+                          else target_llm)
+
+    # 3. 提问预处理
     search_question = question
-    answer_language_instruction = ""
-    if re.search(r'[\u4e00-\u9fff]', question):
-        # 翻译成英文搜索，但要求模型用中文回答
-        search_question = await translate_to_english(question, target_llm)
-        answer_language_instruction = " Please provide the final answer in Chinese (简体中文)."
 
     # 4. 构造 PaperQA2 设置
     multimodal_val = llm_settings.multimodal if llm_settings else 0
@@ -130,13 +111,10 @@ async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]]
         if llm_settings and llm_settings.prompt_template.strip()
         else "Summarize the text relevant to the question: {question}. Text: {text}. Focus on objective findings."
     )
-    # 中文模式追加语言指令（仅当模板末尾没有中文指令时）
-    if answer_language_instruction and "中文" not in base_summary_prompt:
-        base_summary_prompt += answer_language_instruction
 
     settings = Settings(
         llm=target_llm,
-        summary_llm=target_llm,
+        summary_llm=target_summary_llm,
         embedding="st-BAAI/bge-m3", # 使用多语言模型支持中文匹配
         parsing={"multimodal": multimodal_val},
         answer={

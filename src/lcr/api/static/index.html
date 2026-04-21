@@ -62,6 +62,19 @@
                     <!-- 仅 custom provider 时显示 -->
                     <input type="text" id="setting-model-custom" placeholder="e.g. openai/my-model" 
                         class="hidden w-full mt-2 border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+
+                    <label class="block text-xs font-bold text-slate-500 mb-1 mt-3">
+                        Summary Model 
+                        <span class="font-normal text-slate-400 ml-1">for evidence scoring (optional)</span>
+                    </label>
+                    <select id="setting-summary-provider" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none mb-2">
+                        <option value="same">— Same as main model —</option>
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="kimi">Kimi (Moonshot)</option>
+                        <option value="openai">OpenAI</option>
+                    </select>
+                    <select id="setting-summary-model" class="hidden w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </select>
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-500 mb-1">API Key</label>
@@ -295,11 +308,11 @@
         let collections = [];
         let selectedDois = new Set();
         let searchKeyword = '';
-        let llmSettings = { llm: "deepseek/deepseek-chat", api_key: "", api_base: "", multimodal: 0, evidence_k: 10, max_sources: 5, prompt_template: "" };
+        let llmSettings = { llm: "deepseek/deepseek-chat", summary_llm: "", api_key: "", api_base: "", multimodal: 0, evidence_k: 10, max_sources: 5, prompt_template: "" };
 
         // DOM
         const treeContainer = document.getElementById('tree-container'), treeSearch = document.getElementById('tree-search'), loadZoteroBtn = document.getElementById('load-zotero-btn'), askBtn = document.getElementById('ask-btn'), analyseBtn = document.getElementById('analyse-btn'), questionInput = document.getElementById('question'), resultArea = document.getElementById('result-area'), welcomeScreen = document.getElementById('welcome-screen'), answerContainer = document.getElementById('answer-container'), answerText = document.getElementById('answer-text'), citationsList = document.getElementById('citations-list'), errorBox = document.getElementById('error-box'), errorMsg = document.getElementById('error-msg'), selectedSummary = document.getElementById('selected-summary'), clearSelectionBtn = document.getElementById('clear-selection-btn'), llmBadge = document.getElementById('llm-badge'), visionBadge = document.getElementById('vision-badge');
-        const openSettingsBtn = document.getElementById('open-settings'), closeSettingsBtn = document.getElementById('close-settings'), settingsDrawer = document.getElementById('settings-drawer'), drawerOverlay = document.getElementById('drawer-overlay'), applySettingsBtn = document.getElementById('apply-settings'), settingProvider = document.getElementById('setting-provider'), settingModel = document.getElementById('setting-model'), settingModelCustom = document.getElementById('setting-model-custom'), settingKey = document.getElementById('setting-key'), settingBase = document.getElementById('setting-base'), settingMultimodal = document.getElementById('setting-multimodal'), settingK = document.getElementById('setting-k'), settingSources = document.getElementById('setting-sources');
+        const openSettingsBtn = document.getElementById('open-settings'), closeSettingsBtn = document.getElementById('close-settings'), settingsDrawer = document.getElementById('settings-drawer'), drawerOverlay = document.getElementById('drawer-overlay'), applySettingsBtn = document.getElementById('apply-settings'), settingProvider = document.getElementById('setting-provider'), settingModel = document.getElementById('setting-model'), settingModelCustom = document.getElementById('setting-model-custom'), settingKey = document.getElementById('setting-key'), settingBase = document.getElementById('setting-base'), settingMultimodal = document.getElementById('setting-multimodal'), settingK = document.getElementById('setting-k'), settingSources = document.getElementById('setting-sources'), settingSummaryProvider = document.getElementById('setting-summary-provider'), settingSummaryModel = document.getElementById('setting-summary-model');
         
         const promptTemplateSelect = document.getElementById('prompt-template-select');
         const editPromptBtn = document.getElementById('edit-prompt-btn');
@@ -345,6 +358,18 @@
         }
 
         settingProvider.onchange = onProviderChange;
+        
+        settingSummaryProvider.onchange = () => {
+            const p = settingSummaryProvider.value;
+            if (p === 'same') {
+                settingSummaryModel.classList.add('hidden');
+                return;
+            }
+            settingSummaryModel.classList.remove('hidden');
+            const models = PROVIDER_MODELS[p]?.models || [];
+            settingSummaryModel.innerHTML = models
+                .map(m => `<option value="${m.value}">${m.label}</option>`).join('');
+        };
         
         async function loadPromptTemplates() {
             try {
@@ -442,6 +467,7 @@
 
             llmSettings = { 
                 llm: modelVal, 
+                summary_llm: settingSummaryProvider.value === 'same' ? '' : settingSummaryModel.value,
                 api_key: settingKey.value.trim(), 
                 api_base: settingBase.value.trim(), 
                 multimodal: parseInt(settingMultimodal.value),
