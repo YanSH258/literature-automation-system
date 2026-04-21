@@ -20,12 +20,18 @@ app = FastAPI(title="LCR · Literature Citation-RAG")
 static_dir = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
+class LLMSettings(BaseModel):
+    llm: str = "deepseek/deepseek-chat"
+    api_key: str = ""          # 可选，覆盖环境变量
+    api_base: str = ""         # 可选，自定义接口地址
+
 class AskRequest(BaseModel):
     question: str
     paper_dir: str = "./papers"
     dois: Optional[List[str]] = None
+    llm_settings: Optional[LLMSettings] = None
 
-async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]] = None) -> dict:
+async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]] = None, llm_settings: Optional[LLMSettings] = None) -> dict:
     tmp_dir = None
 
     if dois:
@@ -41,7 +47,8 @@ async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]]
             if rec and rec.pdf_path and os.path.exists(rec.pdf_path):
                 pdf = Path(rec.pdf_path)
                 dest = Path(tmp_dir) / f"{pdf.parent.name}_{pdf.name}"
-                os.symlink(pdf, dest)
+                if not dest.exists():
+                    os.symlink(pdf, dest)
                 linked += 1
 
         if linked == 0:
@@ -50,12 +57,32 @@ async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]]
         paper_dir = tmp_dir
         print(f"Linked {linked} PDFs into {tmp_dir}")
 
+    # 处理 LLM 设置
+    target_llm = "deepseek/deepseek-chat"
+    llm_config = {}
+    if llm_settings:
+        target_llm = llm_settings.llm
+        if llm_settings.api_key:
+            key_name = ""
+            if "deepseek" in target_llm.lower(): key_name = "DEEPSEEK_API_KEY"
+            elif "claude" in target_llm.lower() or "anthropic" in target_llm.lower(): key_name = "ANTHROPIC_API_KEY"
+            elif "gpt" in target_llm.lower() or "openai" in target_llm.lower(): key_name = "OPENAI_API_KEY"
+            if key_name:
+                os.environ[key_name] = llm_settings.api_key
+        
+        if llm_settings.api_base:
+            llm_config["api_base"] = llm_settings.api_base
+
     settings = Settings(
-        llm="deepseek/deepseek-chat",
-        summary_llm="deepseek/deepseek-chat",
+        llm=target_llm,
+        summary_llm=target_llm,
+        llm_config=llm_config if llm_config else None,
+        summary_llm_config=llm_config if llm_config else None,
         embedding="st-BAAI/bge-small-en-v1.5",
+        parsing={"use_doc_details": False},   # 禁用图片/多模态分析，避免调 gpt-4o
         agent={
-            "agent_llm": "deepseek/deepseek-chat",
+            "agent_llm": target_llm,
+            "agent_llm_config": {"model_list": [{"model_name": target_llm}]} if llm_config else None,
             "index": {
                 "paper_directory": paper_dir,
                 "recurse_subdirectories": False,
@@ -96,10 +123,19 @@ async def get_zotero_collections():
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/analyse")
+async def analyse_endpoint(payload: dict):
+    # Mock endpoint for Task 9
+    return {
+        "status": "not_implemented", 
+        "message": "Coming soon: Structured batch analysis for selected papers.",
+        "dois": payload.get("dois", [])
+    }
+
 @app.post("/ask")
 async def ask_endpoint(payload: AskRequest):
     try:
-        return await query_paperqa(payload.question, payload.paper_dir, payload.dois)
+        return await query_paperqa(payload.question, payload.paper_dir, payload.dois, payload.llm_settings)
     except Exception as e:
         import traceback
         traceback.print_exc()

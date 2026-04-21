@@ -24,9 +24,85 @@
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         .collection-node[data-collapsed="true"] + ul { display: none; }
+        
+        /* Drawer animation */
+        #settings-drawer {
+            transition: transform 0.3s ease-in-out;
+            transform: translateX(100%);
+        }
+        #settings-drawer.open {
+            transform: translateX(0);
+        }
+        #drawer-overlay {
+            transition: opacity 0.3s ease-in-out;
+            pointer-events: none;
+            opacity: 0;
+        }
+        #drawer-overlay.open {
+            pointer-events: auto;
+            opacity: 1;
+        }
     </style>
 </head>
-<body class="bg-slate-50 min-h-screen flex flex-col font-sans text-slate-900">
+<body class="bg-slate-50 min-h-screen flex flex-col font-sans text-slate-900 overflow-hidden">
+    <!-- Overlay for drawer -->
+    <div id="drawer-overlay" class="fixed inset-0 bg-black/20 z-40 transition-opacity"></div>
+    
+    <!-- Settings Drawer -->
+    <div id="settings-drawer" class="fixed top-0 right-0 h-full w-80 bg-white shadow-2xl z-50 p-6 flex flex-col">
+        <div class="flex justify-between items-center mb-8">
+            <h2 class="text-lg font-bold flex items-center">
+                <i class="fas fa-cog mr-2 text-slate-400"></i>
+                LLM Settings
+            </h2>
+            <button id="close-settings" class="text-slate-400 hover:text-slate-600 transition">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <div class="flex-1 space-y-6 overflow-y-auto pr-2 custom-scrollbar">
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Model</label>
+                <select id="setting-model" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    <option value="deepseek/deepseek-chat">deepseek/deepseek-chat</option>
+                    <option value="claude-3-5-sonnet-20241022">claude-3-5-sonnet-20241022</option>
+                    <option value="gpt-4o-2024-11-20">gpt-4o-2024-11-20</option>
+                </select>
+                <div class="mt-2">
+                    <input type="text" id="setting-model-custom" placeholder="Or type custom model name..." 
+                        class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+            </div>
+            
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">API Key</label>
+                <input type="password" id="setting-key" placeholder="Leave blank to use .env" 
+                    class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+            
+            <div>
+                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">API Base URL</label>
+                <input type="text" id="setting-base" placeholder="Optional custom endpoint" 
+                    class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+            
+            <div class="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                <p class="text-[10px] text-blue-700 leading-normal">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Settings are only valid for the current session and won't be saved to disk.
+                    <br><br>
+                    <strong>Key Priority:</strong> Settings > .env file > Environment vars
+                </p>
+            </div>
+        </div>
+        
+        <div class="pt-6 border-t mt-6">
+            <button id="apply-settings" class="w-full bg-slate-800 hover:bg-slate-900 text-white py-2 rounded-md text-sm font-bold transition">
+                Apply Settings
+            </button>
+        </div>
+    </div>
+
     <header class="bg-white border-b border-slate-200 px-6 py-3 flex justify-between items-center sticky top-0 z-10 shadow-sm">
         <div class="flex items-center space-x-2">
             <div class="bg-blue-600 text-white p-1.5 rounded-lg">
@@ -35,10 +111,21 @@
             <h1 class="text-lg font-bold tracking-tight">LCR <span class="text-blue-600">· Literature Citation-RAG</span></h1>
         </div>
         <div class="flex items-center space-x-4">
-            <span id="selected-summary" class="text-sm font-medium text-slate-500">Selected: 0 papers</span>
-            <button id="ask-btn-top" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-md text-sm font-semibold transition shadow-sm">
-                Ask System
-            </button>
+            <div class="flex items-center space-x-2 border-r pr-4 border-slate-200">
+                <span id="selected-summary" class="text-sm font-medium text-slate-500">Selected: 0 papers</span>
+                <button id="clear-selection-btn" class="text-xs text-red-500 hover:text-red-700 hover:underline transition hidden">
+                    Clear Selection
+                </button>
+            </div>
+            <div class="flex items-center space-x-3">
+                <button id="open-settings" class="text-slate-400 hover:text-slate-600 p-2 transition" title="LLM Settings">
+                    <i class="fas fa-cog text-xl"></i>
+                </button>
+                <button id="ask-btn-top" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-md text-sm font-semibold transition shadow-sm flex items-center" title="RAG Question: Answer based on selected papers">
+                    <i class="fas fa-search mr-2"></i>
+                    Ask System
+                </button>
+            </div>
         </div>
     </header>
 
@@ -58,7 +145,6 @@
             </div>
             
             <div id="tree-container" class="flex-1 overflow-y-auto p-2 custom-scrollbar">
-                <!-- 目录树将渲染在这里 -->
                 <div id="tree-loading" class="flex flex-col items-center justify-center h-40 text-slate-400">
                     <i class="fas fa-circle-notch fa-spin text-2xl mb-2"></i>
                     <span class="text-xs">Loading Zotero...</span>
@@ -66,7 +152,7 @@
             </div>
         </aside>
 
-        <!-- 右侧问答区域 -->
+        <!-- 右侧区域 -->
         <section class="flex-1 flex flex-col bg-slate-50 overflow-hidden">
             <!-- 问题输入区 -->
             <div class="p-6 bg-white border-b border-slate-200">
@@ -77,13 +163,19 @@
                             placeholder="Ask a scientific question based on selected literature..."></textarea>
                     </div>
                     <div class="flex justify-between items-center">
-                        <div class="text-xs text-slate-400 italic">
-                            Tip: Select papers on the left to restrict search scope.
+                        <div id="llm-badge" class="px-2 py-1 bg-slate-100 rounded text-[10px] text-slate-500 font-mono">
+                            Model: deepseek/deepseek-chat
                         </div>
-                        <button id="ask-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2.5 rounded-lg font-bold transition shadow-md flex items-center space-x-2">
-                            <span>Get Answer</span>
-                            <i class="fas fa-paper-plane"></i>
-                        </button>
+                        <div class="flex space-x-3">
+                            <button id="analyse-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-lg font-bold transition shadow-md flex items-center space-x-2" title="Batch Analysis: Generate structured summary for selected papers">
+                                <i class="fas fa-microscope"></i>
+                                <span>Analyse</span>
+                            </button>
+                            <button id="ask-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2.5 rounded-lg font-bold transition shadow-md flex items-center space-x-2" title="RAG Question: Answer based on selected papers">
+                                <i class="fas fa-search"></i>
+                                <span>Ask System</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -102,9 +194,12 @@
 
                 <div id="answer-container" class="hidden max-w-4xl mx-auto space-y-8 pb-12">
                     <article class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-                        <div class="flex items-center space-x-2 mb-4 text-blue-600">
-                            <i class="fas fa-lightbulb"></i>
-                            <h2 class="font-bold uppercase tracking-wider text-sm">Synthetic Answer</h2>
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center space-x-2 text-blue-600">
+                                <i class="fas fa-lightbulb"></i>
+                                <h2 class="font-bold uppercase tracking-wider text-sm">Synthetic Answer</h2>
+                            </div>
+                            <div id="result-meta" class="text-[10px] text-slate-400 font-mono"></div>
                         </div>
                         <div id="answer-text" class="text-slate-800 text-lg leading-relaxed whitespace-pre-wrap"></div>
                     </article>
@@ -126,6 +221,11 @@
         let collections = [];
         let selectedDois = new Set();
         let searchKeyword = '';
+        let llmSettings = {
+            llm: "deepseek/deepseek-chat",
+            api_key: "",
+            api_base: ""
+        };
 
         // DOM Elements
         const treeContainer = document.getElementById('tree-container');
@@ -133,6 +233,7 @@
         const loadZoteroBtn = document.getElementById('load-zotero-btn');
         const askBtn = document.getElementById('ask-btn');
         const askBtnTop = document.getElementById('ask-btn-top');
+        const analyseBtn = document.getElementById('analyse-btn');
         const questionInput = document.getElementById('question');
         const resultArea = document.getElementById('result-area');
         const welcomeScreen = document.getElementById('welcome-screen');
@@ -142,11 +243,55 @@
         const errorBox = document.getElementById('error-box');
         const errorMsg = document.getElementById('error-msg');
         const selectedSummary = document.getElementById('selected-summary');
+        const clearSelectionBtn = document.getElementById('clear-selection-btn');
+        const llmBadge = document.getElementById('llm-badge');
+
+        // Drawer Elements
+        const openSettingsBtn = document.getElementById('open-settings');
+        const closeSettingsBtn = document.getElementById('close-settings');
+        const settingsDrawer = document.getElementById('settings-drawer');
+        const drawerOverlay = document.getElementById('drawer-overlay');
+        const applySettingsBtn = document.getElementById('apply-settings');
+        const settingModel = document.getElementById('setting-model');
+        const settingModelCustom = document.getElementById('setting-model-custom');
+        const settingKey = document.getElementById('setting-key');
+        const settingBase = document.getElementById('setting-base');
 
         // Initialize
         fetchCollections();
 
+        // Settings Drawer Logic
+        openSettingsBtn.addEventListener('click', () => {
+            settingsDrawer.classList.add('open');
+            drawerOverlay.classList.add('open');
+        });
+
+        const closeDrawer = () => {
+            settingsDrawer.classList.remove('open');
+            drawerOverlay.classList.remove('open');
+        };
+
+        closeSettingsBtn.addEventListener('click', closeDrawer);
+        drawerOverlay.addEventListener('click', closeDrawer);
+
+        applySettingsBtn.addEventListener('click', () => {
+            const customModel = settingModelCustom.value.trim();
+            llmSettings = {
+                llm: customModel || settingModel.value,
+                api_key: settingKey.value.trim(),
+                api_base: settingBase.value.trim()
+            };
+            llmBadge.textContent = `Model: ${llmSettings.llm}`;
+            closeDrawer();
+        });
+
         // Events
+        clearSelectionBtn.addEventListener('click', () => {
+            selectedDois.clear();
+            renderTree();
+            updateSummary();
+        });
+
         loadZoteroBtn.addEventListener('click', fetchCollections);
         treeSearch.addEventListener('input', (e) => {
             searchKeyword = e.target.value.toLowerCase();
@@ -154,6 +299,7 @@
         });
 
         [askBtn, askBtnTop].forEach(btn => btn.addEventListener('click', handleAsk));
+        analyseBtn.addEventListener('click', handleAnalyse);
 
         async function fetchCollections() {
             treeContainer.innerHTML = '<div class="flex flex-col items-center justify-center h-40 text-slate-400"><i class="fas fa-circle-notch fa-spin text-2xl mb-2"></i><span class="text-xs">Connecting to Zotero...</span></div>';
@@ -170,151 +316,84 @@
 
         function renderTree() {
             if (collections.length === 0) return;
-            
             treeContainer.innerHTML = '';
-            
-            // Build map for nested tree
             const colMap = {};
             collections.forEach(c => colMap[c.id] = { ...c, children: [], filteredItems: [] });
-            
             const rootCollections = [];
             collections.forEach(c => {
                 const node = colMap[c.id];
-                // Filter items
                 node.filteredItems = c.items.filter(item => 
                     item.title.toLowerCase().includes(searchKeyword) || 
                     item.doi.toLowerCase().includes(searchKeyword)
                 );
-                
-                if (c.parent_id && colMap[c.parent_id]) {
-                    colMap[c.parent_id].children.push(node);
-                } else {
-                    rootCollections.push(node);
-                }
+                if (c.parent_id && colMap[c.parent_id]) colMap[c.parent_id].children.push(node);
+                else rootCollections.push(node);
             });
-
             const fragment = document.createDocumentFragment();
             rootCollections.forEach(col => {
                 const colEl = createCollectionEl(col);
                 if (colEl) fragment.appendChild(colEl);
             });
-
-            if (fragment.children.length === 0) {
-                treeContainer.innerHTML = '<div class="p-8 text-center text-slate-400 text-xs italic">No matching results found</div>';
-            } else {
-                treeContainer.appendChild(fragment);
-            }
+            if (fragment.children.length === 0) treeContainer.innerHTML = '<div class="p-8 text-center text-slate-400 text-xs italic">No matching results found</div>';
+            else treeContainer.appendChild(fragment);
         }
 
         function createCollectionEl(col) {
-            // Recursively check if children have items
             const hasVisibleItems = col.filteredItems.length > 0 || col.children.some(child => hasVisibleItemsRecursive(child));
             if (searchKeyword && !hasVisibleItems) return null;
-
             const li = document.createElement('div');
             li.className = 'mb-1';
-            
             const header = document.createElement('div');
             header.className = 'collection-node flex items-center group py-1 px-2 rounded hover:bg-slate-50 cursor-pointer transition';
             header.dataset.collapsed = "false";
-            
-            const toggleIcon = document.createElement('i');
-            toggleIcon.className = 'fas fa-chevron-down w-4 text-slate-400 text-[10px] transition-transform';
-            
-            const folderIcon = document.createElement('i');
-            folderIcon.className = 'fas fa-folder text-amber-400 mr-2';
-            
-            const nameSpan = document.createElement('span');
-            nameSpan.className = 'flex-1 text-sm font-medium truncate';
-            nameSpan.textContent = `${col.name}`;
-            
-            const countSpan = document.createElement('span');
-            countSpan.className = 'text-[10px] text-slate-400 ml-2 bg-slate-100 px-1.5 py-0.5 rounded-full';
-            countSpan.textContent = col.items.length;
-
-            const bulkSelectBtn = document.createElement('button');
-            bulkSelectBtn.className = 'hidden group-hover:block ml-2 text-blue-500 hover:text-blue-700 text-[10px]';
-            bulkSelectBtn.textContent = 'All';
-            bulkSelectBtn.onclick = (e) => {
+            header.innerHTML = `
+                <i class="fas fa-chevron-down w-4 text-slate-400 text-[10px] transition-transform"></i>
+                <i class="fas fa-folder text-amber-400 mr-2"></i>
+                <span class="flex-1 text-sm font-medium truncate">${col.name}</span>
+                <span class="text-[10px] text-slate-400 ml-2 bg-slate-100 px-1.5 py-0.5 rounded-full">${col.items.length}</span>
+                <button class="bulk-select hidden group-hover:block ml-2 text-blue-500 hover:text-blue-700 text-[10px]">All</button>
+            `;
+            header.querySelector('.bulk-select').onclick = (e) => {
                 e.stopPropagation();
                 const allChecked = col.items.every(item => selectedDois.has(item.doi));
-                col.items.forEach(item => {
-                    if (item.has_pdf) {
-                        if (allChecked) selectedDois.delete(item.doi);
-                        else selectedDois.add(item.doi);
-                    }
-                });
-                renderTree();
-                updateSummary();
+                col.items.forEach(item => { if (item.has_pdf) { if (allChecked) selectedDois.delete(item.doi); else selectedDois.add(item.doi); } });
+                renderTree(); updateSummary();
             };
-
-            header.appendChild(toggleIcon);
-            header.appendChild(folderIcon);
-            header.appendChild(nameSpan);
-            header.appendChild(countSpan);
-            header.appendChild(bulkSelectBtn);
-
             header.onclick = () => {
                 const isCollapsed = header.dataset.collapsed === "true";
                 header.dataset.collapsed = (!isCollapsed).toString();
-                toggleIcon.style.transform = isCollapsed ? 'rotate(0deg)' : 'rotate(-90deg)';
+                header.querySelector('.fa-chevron-down').style.transform = isCollapsed ? 'rotate(0deg)' : 'rotate(-90deg)';
             };
-
             const ul = document.createElement('ul');
             ul.className = 'ml-4 mt-1 border-l border-slate-100 pl-2';
-
-            // Render Sub-collections
-            col.children.forEach(child => {
-                const childEl = createCollectionEl(child);
-                if (childEl) ul.appendChild(childEl);
-            });
-
-            // Render Items
+            col.children.forEach(child => { const childEl = createCollectionEl(child); if (childEl) ul.appendChild(childEl); });
             col.filteredItems.forEach(item => {
                 const itemDiv = document.createElement('div');
                 itemDiv.className = `flex items-start py-1.5 px-2 rounded transition ${item.has_pdf ? 'hover:bg-blue-50 cursor-pointer' : 'opacity-40'}`;
-                
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.className = 'mt-1 mr-3 rounded border-slate-300 text-blue-600 focus:ring-blue-500';
-                checkbox.checked = selectedDois.has(item.doi);
-                checkbox.disabled = !item.has_pdf;
-                
-                const infoDiv = document.createElement('div');
-                infoDiv.className = 'flex-1 min-w-0';
-                
-                const title = document.createElement('div');
-                title.className = 'text-[13px] leading-tight break-words font-medium text-slate-700';
-                title.textContent = item.title;
-                
-                const meta = document.createElement('div');
-                meta.className = 'text-[10px] text-slate-400 mt-1 flex justify-between';
-                meta.innerHTML = `<span><i class="far fa-calendar-alt mr-1"></i>${item.year}</span> <span class="truncate ml-2">${item.doi}</span>`;
-
+                itemDiv.innerHTML = `
+                    <input type="checkbox" class="doi-checkbox mt-1 mr-3 rounded border-slate-300 text-blue-600 focus:ring-blue-500" ${selectedDois.has(item.doi) ? 'checked' : ''} ${item.has_pdf ? '' : 'disabled'}>
+                    <div class="flex-1 min-w-0">
+                        <div class="text-[13px] leading-tight break-words font-medium text-slate-700">${item.title}</div>
+                        <div class="text-[10px] text-slate-400 mt-1 flex justify-between">
+                            <span><i class="far fa-calendar-alt mr-1"></i>${item.year}</span> <span class="truncate ml-2">${item.doi}</span>
+                        </div>
+                    </div>
+                `;
                 itemDiv.onclick = (e) => {
-                    if (item.has_pdf && e.target !== checkbox) {
-                        checkbox.checked = !checkbox.checked;
-                        if (checkbox.checked) selectedDois.add(item.doi);
-                        else selectedDois.delete(item.doi);
+                    if (item.has_pdf && e.target.type !== 'checkbox') {
+                        const cb = itemDiv.querySelector('input');
+                        cb.checked = !cb.checked;
+                        if (cb.checked) selectedDois.add(item.doi); else selectedDois.delete(item.doi);
                         updateSummary();
                     }
                 };
-
-                checkbox.onchange = () => {
-                    if (checkbox.checked) selectedDois.add(item.doi);
-                    else selectedDois.delete(item.doi);
+                itemDiv.querySelector('input').onchange = (e) => {
+                    if (e.target.checked) selectedDois.add(item.doi); else selectedDois.delete(item.doi);
                     updateSummary();
                 };
-
-                itemDiv.appendChild(checkbox);
-                itemDiv.appendChild(infoDiv);
-                infoDiv.appendChild(title);
-                infoDiv.appendChild(meta);
                 ul.appendChild(itemDiv);
             });
-
-            li.appendChild(header);
-            li.appendChild(ul);
+            li.appendChild(header); li.appendChild(ul);
             return li;
         }
 
@@ -325,71 +404,55 @@
 
         function updateSummary() {
             selectedSummary.textContent = `Selected: ${selectedDois.size} papers`;
+            if (selectedDois.size > 0) clearSelectionBtn.classList.remove('hidden');
+            else clearSelectionBtn.classList.add('hidden');
         }
 
         async function handleAsk() {
             const question = questionInput.value.trim();
             if (!question) return;
-            
-            // Validation
-            if (selectedDois.size === 0) {
-                alert("Please select at least one paper from the left library.");
-                return;
-            }
-
-            // UI State
-            askBtn.disabled = true;
-            askBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i><span>Analyzing...</span>';
-            errorBox.classList.add('hidden');
-            welcomeScreen.classList.add('hidden');
-            answerContainer.classList.add('hidden');
-
+            if (selectedDois.size === 0) { alert("Please select at least one paper."); return; }
+            askBtn.disabled = true; askBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i><span>Asking...</span>';
+            errorBox.classList.add('hidden'); welcomeScreen.classList.add('hidden'); answerContainer.classList.add('hidden');
             try {
-                const response = await fetch('/ask', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        question, 
-                        dois: Array.from(selectedDois)
-                    })
+                const res = await fetch('/ask', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question, dois: Array.from(selectedDois), llm_settings: llmSettings })
                 });
-
-                const data = await response.json();
-                if (!response.ok) throw new Error(data.detail || 'The synthesis engine encountered an error.');
-
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Synthesis error.');
                 answerText.textContent = data.answer;
                 citationsList.innerHTML = '';
-                
                 data.citations.forEach((cit, index) => {
                     const card = document.createElement('div');
-                    card.className = 'bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition';
+                    card.className = 'bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm';
                     card.innerHTML = `
-                        <details class="group">
-                            <summary class="flex items-center justify-between p-4 cursor-pointer list-none">
-                                <div class="flex items-center space-x-3">
-                                    <span class="flex items-center justify-center bg-blue-100 text-blue-700 w-6 h-6 rounded text-[10px] font-bold">#${index + 1}</span>
-                                    <h3 class="font-bold text-sm text-slate-700 truncate max-w-lg">${cit.source}</h3>
-                                </div>
-                                <i class="fas fa-chevron-down text-slate-300 group-open:rotate-180 transition-transform"></i>
-                            </summary>
-                            <div class="px-4 pb-4 border-t border-slate-50 pt-3">
-                                <div class="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border-l-4 border-blue-400 italic">
-                                    "${cit.text}..."
-                                </div>
-                            </div>
-                        </details>
+                        <details class="group"><summary class="flex items-center justify-between p-4 cursor-pointer list-none"><div class="flex items-center space-x-3"><span class="flex items-center justify-center bg-blue-100 text-blue-700 w-6 h-6 rounded text-[10px] font-bold">#${index+1}</span><h3 class="font-bold text-sm text-slate-700 truncate max-w-lg">${cit.source}</h3></div><i class="fas fa-chevron-down text-slate-300 group-open:rotate-180 transition-transform"></i></summary><div class="px-4 pb-4 border-t border-slate-50 pt-3"><div class="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border-l-4 border-blue-400 italic">"${cit.text}..."</div></div></details>
                     `;
                     citationsList.appendChild(card);
                 });
-
                 answerContainer.classList.remove('hidden');
             } catch (err) {
-                errorMsg.textContent = err.message;
-                errorBox.classList.remove('hidden');
-                welcomeScreen.classList.remove('hidden');
+                errorMsg.textContent = err.message; errorBox.classList.remove('hidden');
             } finally {
-                askBtn.disabled = false;
-                askBtn.innerHTML = '<span>Get Answer</span><i class="fas fa-paper-plane"></i>';
+                askBtn.disabled = false; askBtn.innerHTML = '<span>Ask System</span><i class="fas fa-search"></i>';
+            }
+        }
+
+        async function handleAnalyse() {
+            if (selectedDois.size === 0) { alert("Please select papers to analyse."); return; }
+            analyseBtn.disabled = true; analyseBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i><span>Analysing...</span>';
+            try {
+                const res = await fetch('/analyse', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dois: Array.from(selectedDois) })
+                });
+                const data = await res.json();
+                alert(data.message + "\n\nSelected papers: " + data.dois.length);
+            } catch (err) {
+                alert("Analyse failed: " + err.message);
+            } finally {
+                analyseBtn.disabled = false; analyseBtn.innerHTML = '<i class="fas fa-microscope"></i><span>Analyse</span>';
             }
         }
     </script>
