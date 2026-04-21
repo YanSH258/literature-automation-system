@@ -24,6 +24,7 @@ class LLMSettings(BaseModel):
     llm: str = "deepseek/deepseek-chat"
     api_key: str = ""          # 可选，覆盖环境变量
     api_base: str = ""         # 可选，自定义接口地址
+    enable_multimodal: bool = False # 是否开启图片识别
 
 class AskRequest(BaseModel):
     question: str
@@ -35,7 +36,6 @@ async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]]
     tmp_dir = None
 
     if dois:
-        # 用软链接把选中的 PDF 平铺到临时目录，避免 relative_to() 失败
         ingestor = ZoteroIngestor()
         all_records = ingestor.load_records()
         doi_to_record = {r.doi.lower(): r for r in all_records}
@@ -53,20 +53,25 @@ async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]]
 
         if linked == 0:
             raise ValueError("No valid PDFs found for the selected DOIs")
-
         paper_dir = tmp_dir
-        print(f"Linked {linked} PDFs into {tmp_dir}")
 
     # 处理 LLM 设置
     target_llm = "deepseek/deepseek-chat"
     llm_config = {}
+    use_multimodal = False
+    
     if llm_settings:
         target_llm = llm_settings.llm
+        use_multimodal = llm_settings.enable_multimodal
         if llm_settings.api_key:
             key_name = ""
-            if "deepseek" in target_llm.lower(): key_name = "DEEPSEEK_API_KEY"
-            elif "claude" in target_llm.lower() or "anthropic" in target_llm.lower(): key_name = "ANTHROPIC_API_KEY"
-            elif "gpt" in target_llm.lower() or "openai" in target_llm.lower(): key_name = "OPENAI_API_KEY"
+            lower_llm = target_llm.lower()
+            if "deepseek" in lower_llm: key_name = "DEEPSEEK_API_KEY"
+            elif "claude" in lower_llm or "anthropic" in lower_llm: key_name = "ANTHROPIC_API_KEY"
+            elif "gpt" in lower_llm or "openai" in lower_llm: key_name = "OPENAI_API_KEY"
+            elif "moonshot" in lower_llm or "kimi" in lower_llm: key_name = "MOONSHOT_API_KEY"
+            elif "gemini" in lower_llm: key_name = "GEMINI_API_KEY"
+            
             if key_name:
                 os.environ[key_name] = llm_settings.api_key
         
@@ -79,7 +84,10 @@ async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]]
         llm_config=llm_config if llm_config else None,
         summary_llm_config=llm_config if llm_config else None,
         embedding="st-BAAI/bge-small-en-v1.5",
-        parsing={"use_doc_details": False},   # 禁用图片/多模态分析，避免调 gpt-4o
+        parsing={
+            "use_doc_details": use_multimodal, 
+            "vision_llm": target_llm if use_multimodal else None
+        },
         agent={
             "agent_llm": target_llm,
             "agent_llm_config": {"model_list": [{"model_name": target_llm}]} if llm_config else None,
@@ -125,7 +133,6 @@ async def get_zotero_collections():
 
 @app.post("/analyse")
 async def analyse_endpoint(payload: dict):
-    # Mock endpoint for Task 9
     return {
         "status": "not_implemented", 
         "message": "Coming soon: Structured batch analysis for selected papers.",
