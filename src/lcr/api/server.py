@@ -17,8 +17,11 @@ from paperqa import Settings, ask
 from pathlib import Path
 from typing import List, Optional
 
-from lcr.ingest.zotero import ZoteroIngestor
+from lcr.ingest.zotero import ZoteroIngestor, ZoteroRecord
 from lcr.ingest.normalizer import generate_manifest_csv
+from lcr.ingest.auto_tagger import tag_all_records, tag_all_records_sync
+from lcr.ingest.chroma_ingestor import ingest_all, get_index_stats, CHROMA_DIR
+from lcr.retrieval.chroma_retriever import retrieve_chunks
 
 import uuid
 import dataclasses
@@ -27,6 +30,15 @@ from lcr.citation.citation_map import build_citation_map
 from lcr.validation.structural import structural_check
 
 app = FastAPI(title="LCR · Literature Citation-RAG")
+
+# 全局索引状态
+INDEX_STATUS = {
+    "is_running": False,
+    "current_step": "idle",
+    "processed": 0,
+    "total": 0,
+    "error": None
+}
 
 # 挂载静态文件目录
 static_dir = Path(__file__).parent / "static"
@@ -48,9 +60,86 @@ class AskRequest(BaseModel):
     question: str
     paper_dir: str = "./papers"
     dois: Optional[List[str]] = None
+    collection_filter: Optional[str] = None
+    tag_filter: Optional[List[str]] = None
     llm_settings: Optional[LLMSettings] = None
 
-async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]] = None, llm_settings: Optional[LLMSettings] = None) -> dict:
+async def query_paperqa(question: str, paper_dir: str, 
+                        dois: Optional[List[str]] = None, 
+                        collection_filter: Optional[str] = None,
+                        tag_filter: Optional[List[str]] = None,
+                        llm_settings: Optional[LLMSettings] = None) -> dict:
+    
+    # --- 优先尝试 ChromaDB 检索流程 ---
+    chroma_ready = (CHROMA_DIR / "chroma.sqlite3").exists()
+    if chroma_ready:
+        print(f"Using ChromaDB retrieval for question: {question}")
+        chunks = retrieve_chunks(
+            question, 
+            n_results=llm_settings.evidence_k if llm_settings else 20,
+            doi_filter=dois,
+            collection_filter=collection_filter,
+            tag_filter=tag_filter
+        )
+        
+        if chunks:
+            # 构造 Prompt 让 LLM 直接基于 chunks 回答
+            target_llm = llm_settings.llm if llm_settings else "deepseek/deepseek-chat"
+            
+            context_str = ""
+            for i, c in enumerate(chunks, start=1):
+                meta = c.metadata
+                context_str += f"[{i}] (doi: {meta.get('doi')}, title: {meta.get('title')})\n{c.text}\n\n"
+            
+            prompt = f"""Answer the question based on the provided context from scientific papers.
+For every factual claim, cite the source using [n] notation where n is the chunk number.
+If context is insufficient, say so.
+
+Context:
+{context_str}
+
+Question: {question}
+
+Answer:"""
+            
+            try:
+                response = await litellm.acompletion(
+                    model=target_llm,
+                    api_key=llm_settings.api_key if llm_settings and llm_settings.api_key else None,
+                    api_base=llm_settings.api_base if llm_settings and llm_settings.api_base else None,
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                answer_text = response.choices[0].message.content
+                
+                session_id = str(uuid.uuid4())
+                cmap = build_citation_map(chunks, session_id=session_id, turn_id=1)
+                structural = structural_check(answer_text, max_index=len(chunks))
+                
+                citations_out = []
+                for idx, entry in cmap.entries.items():
+                    citations_out.append({
+                        "display_index": entry.display_index,
+                        "chunk_id": entry.chunk_id,
+                        "doc_id": entry.doc_id,
+                        "snippet": entry.snippet,
+                        "rcs_score": 0.0,
+                        "metadata": entry.metadata,
+                    })
+
+                return {
+                    "answer": answer_text,
+                    "citations": citations_out,
+                    "structural_check": {
+                        "passed": structural.passed,
+                        "issues": structural.issues,
+                        "cited_indices": structural.cited_indices,
+                    },
+                    "retrieval_source": "chromadb"
+                }
+            except Exception as e:
+                print(f"ChromaDB workflow failed, falling back to PaperQA2: {e}")
+
+    # --- Fallback: 原始 PaperQA2 流程 ---
     # 1. 环境与路径准备
     if not os.path.exists(paper_dir):
         os.makedirs(paper_dir, exist_ok=True)
@@ -278,10 +367,69 @@ async def analyse_endpoint(payload: dict):
         "dois": payload.get("dois", [])
     }
 
+@app.get("/admin/index-status")
+async def index_status():
+    """返回索引状态。"""
+    stats = get_index_stats() if CHROMA_DIR.exists() else {"total_chunks": 0, "total_docs": 0}
+    return {**INDEX_STATUS, "stats": stats}
+
+@app.post("/admin/build-index")
+async def build_index_endpoint():
+    """后台触发全量索引。"""
+    if INDEX_STATUS["is_running"]:
+        return {"status": "already_running"}
+    
+    async def run_indexing():
+        global INDEX_STATUS
+        try:
+            INDEX_STATUS["is_running"] = True
+            INDEX_STATUS["error"] = None
+            
+            # 1. 加载 Zotero
+            INDEX_STATUS["current_step"] = "loading_zotero"
+            ingestor = ZoteroIngestor()
+            records = ingestor.load_records()
+            INDEX_STATUS["total"] = len(records)
+            
+            # 2. 打标 (LLM)
+            INDEX_STATUS["current_step"] = "auto_tagging"
+            tags_map = await tag_all_records(records)
+            
+            # 3. 索引 (Chroma)
+            INDEX_STATUS["current_step"] = "chroma_indexing"
+            # 这里简单处理，同步转异步或直接跑在线程池
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, ingest_all, records, tags_map)
+            
+            INDEX_STATUS["current_step"] = "completed"
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            INDEX_STATUS["error"] = str(e)
+            INDEX_STATUS["current_step"] = "failed"
+        finally:
+            INDEX_STATUS["is_running"] = False
+
+    asyncio.create_task(run_indexing())
+    return {"status": "started"}
+
+@app.get("/admin/tags")
+async def list_tags():
+    """返回可用的标签体系。"""
+    from lcr.ingest.auto_tagger import CHEM_TAG_TAXONOMY
+    return CHEM_TAG_TAXONOMY
+
 @app.post("/ask")
 async def ask_endpoint(payload: AskRequest):
     try:
-        return await query_paperqa(payload.question, payload.paper_dir, payload.dois, payload.llm_settings)
+        return await query_paperqa(
+            payload.question, 
+            payload.paper_dir, 
+            payload.dois, 
+            payload.collection_filter,
+            payload.tag_filter,
+            payload.llm_settings
+        )
     except Exception as e:
         import traceback
         traceback.print_exc()
