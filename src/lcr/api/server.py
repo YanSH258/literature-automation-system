@@ -89,7 +89,15 @@ async def query_paperqa(question: str, paper_dir: str,
             context_str = ""
             for i, c in enumerate(chunks, start=1):
                 meta = c.metadata
-                context_str += f"[{i}] (doi: {meta.get('doi')}, title: {meta.get('title')})\n{c.text}\n\n"
+                authors = meta.get('creators', '')
+                pub = meta.get('publication', '')
+                year = meta.get('year', '')
+                header_parts = [f"doi: {meta.get('doi')}"]
+                if authors: header_parts.append(f"authors: {authors}")
+                if pub: header_parts.append(f"journal: {pub}")
+                if year: header_parts.append(f"year: {year[:4]}")
+                
+                context_str += f"[{i}] ({', '.join(header_parts)})\n{c.text}\n\n"
             
             prompt = f"""Answer the question based on the provided context from scientific papers.
 For every factual claim, cite the source using [n] notation where n is the chunk number.

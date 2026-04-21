@@ -25,7 +25,7 @@ Taxonomy:
 Papers:
 {papers_json}
 
-Return format: [{"doi": "...", "tags": ["...", "..."]}, ...]"""
+Return format: [{{"doi": "...", "tags": ["...", "..."]}}, ...]"""
 
 async def tag_batch(batch: List[ZoteroRecord], semaphore: asyncio.Semaphore) -> List[Dict[str, Any]]:
     async with semaphore:
@@ -47,11 +47,10 @@ async def tag_batch(batch: List[ZoteroRecord], semaphore: asyncio.Semaphore) -> 
             # 注意：MiniMax 的 model 名称通常需要带前缀或直接指定提供商
             # 这里按照 litellm 标准：openai/MiniMax-Text-01 (需配置 api_base)
             response = await litellm.acompletion(
-                model="openai/MiniMax-Text-01",
+                model="minimax/MiniMax-M2.5",
                 api_key=os.environ.get("MINIMAX_API_KEY"),
-                api_base=os.environ.get("MINIMAX_API_BASE", "https://api.minimax.chat/v1"),
+                api_base=os.environ.get("MINIMAX_API_BASE", "https://api.minimax.io/v1"),
                 messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"}
             )
             
             content = response.choices[0].message.content

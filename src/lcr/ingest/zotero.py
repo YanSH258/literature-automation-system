@@ -2,7 +2,7 @@ import os
 import sqlite3
 import getpass
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional, Dict
 from lcr.ingest.normalizer import normalize_doi
 
@@ -13,8 +13,9 @@ JOIN itemData id ON i.itemID = id.itemID
 JOIN itemDataValues idv ON id.valueID = idv.valueID
 JOIN fields f ON id.fieldID = f.fieldID
 WHERE f.fieldName = 'DOI'
+  AND i.libraryID = 1
   AND i.itemTypeID NOT IN (
-      SELECT itemTypeID FROM itemTypes WHERE typeName IN ('attachment', 'note')
+      SELECT itemTypeID FROM itemTypes WHERE typeName IN ('attachment', 'note', 'feed', 'feedItem')
   )
 """
 
@@ -25,8 +26,9 @@ JOIN itemData id ON i.itemID = id.itemID
 JOIN itemDataValues idv ON id.valueID = idv.valueID
 JOIN fields f ON id.fieldID = f.fieldID
 WHERE f.fieldName = 'abstractNote'
+  AND i.libraryID = 1
   AND i.itemTypeID NOT IN (
-      SELECT itemTypeID FROM itemTypes WHERE typeName IN ('attachment','note')
+      SELECT itemTypeID FROM itemTypes WHERE typeName IN ('attachment','note', 'feed', 'feedItem')
   )
 """
 
@@ -74,8 +76,9 @@ LEFT JOIN itemData abs_d ON i.itemID = abs_d.itemID
     AND abs_d.fieldID = (SELECT fieldID FROM fields WHERE fieldName = 'abstractNote')
 LEFT JOIN itemDataValues abs_val ON abs_d.valueID = abs_val.valueID
 WHERE ci.collectionID = ?
+  AND i.libraryID = 1
   AND i.itemTypeID NOT IN (
-      SELECT itemTypeID FROM itemTypes WHERE typeName IN ('attachment','note')
+      SELECT itemTypeID FROM itemTypes WHERE typeName IN ('attachment','note', 'feed', 'feedItem')
   )
 """
 

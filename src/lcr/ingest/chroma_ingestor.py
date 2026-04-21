@@ -21,6 +21,35 @@ class ChromaIngestor:
             embedding_function=self.embedding_fn,
             metadata={"hnsw:space": "cosine"}
         )
+        # 加载 zotero-mcp 元数据
+        self._zotero_meta = self._load_zotero_meta()
+
+    def _load_zotero_meta(self) -> Dict[str, Dict[str, str]]:
+        """从 zotero-mcp 向量库加载增强元数据。"""
+        zotero_db_path = Path.home() / ".config" / "zotero-mcp" / "chroma_db"
+        if not zotero_db_path.exists():
+            return {}
+        
+        try:
+            z_client = chromadb.PersistentClient(path=str(zotero_db_path))
+            z_coll = z_client.get_collection(name="zotero_library")
+            # 取出所有元数据
+            all_data = z_coll.get(include=["metadatas"])
+            meta_map = {}
+            if all_data and all_data["metadatas"]:
+                for m in all_data["metadatas"]:
+                    doi = m.get("doi")
+                    if doi:
+                        clean_doi = doi.lower().strip()
+                        meta_map[clean_doi] = {
+                            "creators": m.get("creators", ""),
+                            "publication": m.get("publication", ""),
+                            "citation_key": m.get("citation_key", "")
+                        }
+            return meta_map
+        except Exception as e:
+            print(f"Warning: Failed to load zotero-mcp meta: {e}")
+            return {}
 
     def extract_text_from_pdf(self, pdf_path: str) -> str:
         """从 PDF 提取纯文本。"""
@@ -65,6 +94,8 @@ class ChromaIngestor:
 
         # 3. 准备元数据
         doi_safe = record.doi.replace("/", "_")
+        z_meta = self._zotero_meta.get(record.doi.lower().strip(), {})
+        
         ids = [f"{doi_safe}#{i:04d}" for i in range(len(chunks))]
         metadatas = [{
             "doi": record.doi,
@@ -72,15 +103,21 @@ class ChromaIngestor:
             "year": str(record.year or "N/A"),
             "collection_paths": "|".join(record.collection_paths),
             "auto_tags": "|".join(tags),
-            "chunk_seq": i
+            "chunk_seq": i,
+            "creators": z_meta.get("creators", ""),
+            "publication": z_meta.get("publication", ""),
+            "citation_key": z_meta.get("citation_key", "")
         } for i in range(len(chunks))]
 
-        # 4. 写入 Chroma
-        self.collection.add(
-            ids=ids,
-            documents=chunks,
-            metadatas=metadatas
-        )
+        # 4. 写入 Chroma (分批写入以防触发 SQL 变量过多错误)
+        batch_size = 100
+        for i in range(0, len(chunks), batch_size):
+            end_idx = min(i + batch_size, len(chunks))
+            self.collection.add(
+                ids=ids[i:end_idx],
+                documents=chunks[i:end_idx],
+                metadatas=metadatas[i:end_idx]
+            )
 
     def ingest_all(self, records: List[ZoteroRecord], tags_map: Dict[str, List[str]]):
         """全量同步。"""
@@ -92,17 +129,18 @@ class ChromaIngestor:
                 self.ingest_record(rec, tags)
 
     def get_stats(self) -> Dict[str, Any]:
-        """获取索引库统计。"""
-        count = self.collection.count()
-        # 获取不重复的 DOI 数量
-        all_meta = self.collection.get(include=['metadatas'])
-        dois = set(m['doi'] for m in all_meta['metadatas']) if all_meta['metadatas'] else set()
-        
-        return {
-            "total_chunks": count,
-            "total_docs": len(dois),
-            "chroma_dir": str(self.persist_dir)
-        }
+        """获取索引库统计 (优化版，防止在大规模数据下崩溃)。"""
+        try:
+            count = self.collection.count()
+            # 统计文献数：因为目前是按 DOI#0000 命名的，所以文献数约为 chunk 数 / 100 (估算)
+            # 或者为了保持性能，暂时只返回 chunk 总数
+            return {
+                "total_chunks": count,
+                "total_docs": "calculating...", # 或者返回大致估算
+                "chroma_dir": str(self.persist_dir)
+            }
+        except Exception as e:
+            return {"error": str(e)}
 
 def get_index_stats() -> Dict[str, Any]:
     return ChromaIngestor().get_stats()
