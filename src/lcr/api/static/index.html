@@ -108,34 +108,6 @@
                 </div>
             </section>
 
-            <!-- Prompt Template Section -->
-            <section class="space-y-4">
-                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest border-b pb-1">Prompt Template</h3>
-                <div>
-                    <label class="block text-xs font-bold text-slate-500 mb-1">Select Template</label>
-                    <select id="setting-prompt-select" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                        <option value="">Loading...</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-500 mb-1">
-                        Template Content
-                        <span class="font-normal text-slate-400 ml-1">({text} {question} {citation} {summary_length})</span>
-                    </label>
-                    <textarea id="setting-prompt-content" rows="4" 
-                        class="w-full border border-slate-200 rounded-md px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none resize-none leading-relaxed" 
-                        placeholder="Edit template or select one above..."></textarea>
-                </div>
-                <div class="flex space-x-2">
-                    <input type="text" id="setting-prompt-savename" placeholder="New template name..." 
-                        class="flex-1 border border-slate-200 rounded-md px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
-                    <button id="save-prompt-btn" class="bg-slate-700 hover:bg-slate-800 text-white px-3 py-2 rounded-md text-xs font-bold transition flex-shrink-0">
-                        Save
-                    </button>
-                </div>
-                <p id="prompt-save-status" class="text-[10px] hidden"></p>
-            </section>
-            
             <div class="bg-blue-50 p-3 rounded-lg border border-blue-100 text-[10px] text-blue-700 leading-normal">
                 <i class="fas fa-info-circle mr-1"></i>
                 Settings are session-only. Key Priority: Settings > .env > Env vars.
@@ -190,6 +162,40 @@
                             class="w-full border border-slate-200 rounded-xl p-4 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition resize-none shadow-sm"
                             placeholder="Ask a scientific question based on selected literature..."></textarea>
                     </div>
+                    
+                    <div class="flex items-center space-x-2 mb-3">
+                        <select id="prompt-template-select" 
+                            class="border border-slate-200 rounded-md px-3 py-1.5 text-xs text-slate-600 focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                            <option value="">Loading templates...</option>
+                        </select>
+                        <button id="edit-prompt-btn" 
+                            class="text-slate-400 hover:text-slate-600 transition text-xs px-2 py-1.5 border border-slate-200 rounded-md bg-white" 
+                            title="View / edit template">
+                            <i class="fas fa-pen"></i>
+                        </button>
+                        <button id="save-prompt-btn"
+                            class="text-slate-400 hover:text-emerald-600 transition text-xs px-2 py-1.5 border border-slate-200 rounded-md bg-white" 
+                            title="Save current template as new">
+                            <i class="fas fa-save"></i>
+                        </button>
+                    </div>
+
+                    <!-- 编辑区（默认折叠，点 edit 按钮展开） -->
+                    <div id="prompt-edit-panel" class="hidden mb-3 space-y-2">
+                        <textarea id="prompt-content-input" rows="3" 
+                            class="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none resize-none leading-relaxed text-slate-700" 
+                            placeholder="Edit template... Variables: {text} {question} {citation} {summary_length}"></textarea>
+                        <div class="flex items-center space-x-2">
+                            <input type="text" id="prompt-save-name" placeholder="Name to save as..." 
+                                class="flex-1 border border-slate-200 rounded-md px-3 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+                            <button id="confirm-save-prompt-btn" 
+                                class="bg-slate-700 hover:bg-slate-800 text-white px-3 py-1.5 rounded-md text-xs font-bold transition">
+                                Save
+                            </button>
+                            <span id="prompt-save-status" class="text-[10px] hidden"></span>
+                        </div>
+                    </div>
+
                     <div class="flex justify-between items-center">
                         <div class="flex space-x-2">
                             <div id="llm-badge" class="px-2 py-1 bg-slate-100 rounded text-[10px] text-slate-500 font-mono">Model: deepseek/deepseek-chat</div>
@@ -293,7 +299,16 @@
 
         // DOM
         const treeContainer = document.getElementById('tree-container'), treeSearch = document.getElementById('tree-search'), loadZoteroBtn = document.getElementById('load-zotero-btn'), askBtn = document.getElementById('ask-btn'), analyseBtn = document.getElementById('analyse-btn'), questionInput = document.getElementById('question'), resultArea = document.getElementById('result-area'), welcomeScreen = document.getElementById('welcome-screen'), answerContainer = document.getElementById('answer-container'), answerText = document.getElementById('answer-text'), citationsList = document.getElementById('citations-list'), errorBox = document.getElementById('error-box'), errorMsg = document.getElementById('error-msg'), selectedSummary = document.getElementById('selected-summary'), clearSelectionBtn = document.getElementById('clear-selection-btn'), llmBadge = document.getElementById('llm-badge'), visionBadge = document.getElementById('vision-badge');
-        const openSettingsBtn = document.getElementById('open-settings'), closeSettingsBtn = document.getElementById('close-settings'), settingsDrawer = document.getElementById('settings-drawer'), drawerOverlay = document.getElementById('drawer-overlay'), applySettingsBtn = document.getElementById('apply-settings'), settingProvider = document.getElementById('setting-provider'), settingModel = document.getElementById('setting-model'), settingModelCustom = document.getElementById('setting-model-custom'), settingKey = document.getElementById('setting-key'), settingBase = document.getElementById('setting-base'), settingMultimodal = document.getElementById('setting-multimodal'), settingK = document.getElementById('setting-k'), settingSources = document.getElementById('setting-sources'), settingPromptSelect = document.getElementById('setting-prompt-select'), settingPromptContent = document.getElementById('setting-prompt-content'), settingPromptSavename = document.getElementById('setting-prompt-savename'), savePromptBtn = document.getElementById('save-prompt-btn'), promptSaveStatus = document.getElementById('prompt-save-status');
+        const openSettingsBtn = document.getElementById('open-settings'), closeSettingsBtn = document.getElementById('close-settings'), settingsDrawer = document.getElementById('settings-drawer'), drawerOverlay = document.getElementById('drawer-overlay'), applySettingsBtn = document.getElementById('apply-settings'), settingProvider = document.getElementById('setting-provider'), settingModel = document.getElementById('setting-model'), settingModelCustom = document.getElementById('setting-model-custom'), settingKey = document.getElementById('setting-key'), settingBase = document.getElementById('setting-base'), settingMultimodal = document.getElementById('setting-multimodal'), settingK = document.getElementById('setting-k'), settingSources = document.getElementById('setting-sources');
+        
+        const promptTemplateSelect = document.getElementById('prompt-template-select');
+        const editPromptBtn = document.getElementById('edit-prompt-btn');
+        const savePromptBtn = document.getElementById('save-prompt-btn');
+        const promptEditPanel = document.getElementById('prompt-edit-panel');
+        const promptContentInput = document.getElementById('prompt-content-input');
+        const promptSaveName = document.getElementById('prompt-save-name');
+        const confirmSavePromptBtn = document.getElementById('confirm-save-prompt-btn');
+        const promptSaveStatus = document.getElementById('prompt-save-status');
 
         function onProviderChange() {
             const provider = settingProvider.value;
@@ -335,35 +350,47 @@
             try {
                 const res = await fetch('/prompts');
                 const data = await res.json();
-                settingPromptSelect.innerHTML = '<option value="">— Custom (edit below) —</option>';
+                promptTemplateSelect.innerHTML = '<option value="">— Custom (edit below) —</option>';
                 data.templates.forEach(t => {
                     const opt = document.createElement('option');
                     opt.value = t.template;
                     opt.textContent = `${t.name}${t.description ? ' · ' + t.description : ''}`;
-                    settingPromptSelect.appendChild(opt);
+                    promptTemplateSelect.appendChild(opt);
                 });
                 // 默认选中 Default 模板
-                const defaultOpt = [...settingPromptSelect.options].find(o => o.textContent.startsWith('Default'));
+                const defaultOpt = [...promptTemplateSelect.options].find(o => o.textContent.startsWith('Default'));
                 if (defaultOpt) {
-                    settingPromptSelect.value = defaultOpt.value;
-                    settingPromptContent.value = defaultOpt.value;
+                    promptTemplateSelect.value = defaultOpt.value;
+                    promptContentInput.value = defaultOpt.value;
+                    llmSettings.prompt_template = defaultOpt.value;
                 }
             } catch (e) {
-                settingPromptSelect.innerHTML = '<option value="">Failed to load</option>';
+                promptTemplateSelect.innerHTML = '<option value="">Failed to load</option>';
             }
         }
 
-        settingPromptSelect.onchange = () => {
-            if (settingPromptSelect.value) {
-                settingPromptContent.value = settingPromptSelect.value;
-            }
+        promptTemplateSelect.onchange = () => {
+            const val = promptTemplateSelect.value;
+            if (val) promptContentInput.value = val;
+            // 实时更新 llmSettings（不需要点 Apply）
+            llmSettings.prompt_template = val;
         };
 
-        savePromptBtn.onclick = async () => {
-            const name = settingPromptSavename.value.trim();
-            const template = settingPromptContent.value.trim();
+        editPromptBtn.onclick = () => {
+            promptEditPanel.classList.toggle('hidden');
+        };
+
+        savePromptBtn.onclick = () => {
+            // 先展开编辑区，聚焦到 save name 输入框
+            promptEditPanel.classList.remove('hidden');
+            promptSaveName.focus();
+        };
+
+        confirmSavePromptBtn.onclick = async () => {
+            const name = promptSaveName.value.trim();
+            const template = promptContentInput.value.trim();
             if (!name || !template) return;
-            savePromptBtn.disabled = true;
+            confirmSavePromptBtn.disabled = true;
             try {
                 const res = await fetch('/prompts', {
                     method: 'POST',
@@ -375,16 +402,29 @@
                 promptSaveStatus.textContent = `✓ Saved as "${data.name}"`;
                 promptSaveStatus.className = 'text-[10px] text-emerald-600';
                 promptSaveStatus.classList.remove('hidden');
-                settingPromptSavename.value = '';
+                promptSaveName.value = '';
                 await loadPromptTemplates();
+                // 自动选中刚保存的模板
+                const newOpt = [...promptTemplateSelect.options].find(o => o.textContent.startsWith(data.name));
+                if (newOpt) { 
+                    promptTemplateSelect.value = newOpt.value;
+                    llmSettings.prompt_template = newOpt.value; 
+                }
                 setTimeout(() => promptSaveStatus.classList.add('hidden'), 3000);
             } catch (e) {
                 promptSaveStatus.textContent = `✗ ${e.message}`;
                 promptSaveStatus.className = 'text-[10px] text-red-500';
                 promptSaveStatus.classList.remove('hidden');
             } finally {
-                savePromptBtn.disabled = false;
+                confirmSavePromptBtn.disabled = false;
             }
+        };
+
+        promptContentInput.oninput = () => {
+            // 手动编辑时实时同步到 llmSettings
+            llmSettings.prompt_template = promptContentInput.value.trim();
+            // 取消 select 的高亮选中（用户已偏离模板）
+            promptTemplateSelect.value = '';
         };
 
         fetchCollections();
@@ -406,8 +446,7 @@
                 api_base: settingBase.value.trim(), 
                 multimodal: parseInt(settingMultimodal.value),
                 evidence_k: parseInt(settingK.value),
-                max_sources: parseInt(settingSources.value),
-                prompt_template: settingPromptContent.value.trim()
+                max_sources: parseInt(settingSources.value)
             };
             llmBadge.textContent = `Model: ${llmSettings.llm}`;
             visionBadge.classList.toggle('hidden', llmSettings.multimodal === 0);
