@@ -12,17 +12,18 @@
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         #settings-drawer { transition: transform 0.3s ease-in-out; transform: translateX(100%); }
         #settings-drawer.open { transform: translateX(0); }
         #drawer-overlay { transition: opacity 0.3s ease-in-out; pointer-events: none; opacity: 0; }
         #drawer-overlay.open { pointer-events: auto; opacity: 1; }
-        #answer-text h1,#answer-text h2,#answer-text h3 { font-weight:700; margin:1em 0 .5em; }
-        #answer-text p { margin-bottom:.75em; }
-        #answer-text strong { font-weight:700; }
-        #answer-text ul,#answer-text ol { margin-left:1.5em; margin-bottom:.75em; list-style:disc; }
-        #answer-text li { margin-bottom:.25em; }
-        .collection-node[data-collapsed="true"] + ul { display: none; }
+        #answer-text h1,#answer-text h2,#answer-text h3 { font-weight:700; margin:1.5em 0 .5em; color: #1e293b; }
+        #answer-text p { margin-bottom:1em; line-height: 1.7; }
+        #answer-text strong { font-weight:700; color: #3b82f6; }
+        #answer-text ul,#answer-text ol { margin-left:1.5em; margin-bottom:1em; list-style:disc; }
+        #answer-text li { margin-bottom:0.4em; }
+        #answer-text table { width: 100%; border-collapse: collapse; margin: 1em 0; font-size: 0.9em; }
+        #answer-text th, #answer-text td { border: 1px solid #e2e8f0; padding: 8px; text-align: left; }
+        #answer-text th { background: #f8fafc; font-weight: 700; }
     </style>
 </head>
 <body class="bg-slate-50 h-screen flex flex-col font-sans text-slate-900 overflow-hidden">
@@ -34,7 +35,6 @@
             <h2 class="text-lg font-bold flex items-center"><i class="fas fa-cog mr-2 text-slate-400"></i>Settings</h2>
             <button id="close-settings" class="text-slate-400 hover:text-slate-600 transition"><i class="fas fa-times"></i></button>
         </div>
-
         <div class="flex-1 space-y-6 overflow-y-auto pr-2 custom-scrollbar">
             <section class="space-y-4">
                 <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest border-b pb-1">LLM Configuration</h3>
@@ -43,234 +43,116 @@
                     <select id="setting-provider" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none mb-2">
                         <option value="deepseek">DeepSeek</option>
                         <option value="kimi">Kimi (Moonshot)</option>
-                        <option value="claude">Anthropic Claude</option>
                         <option value="openai">OpenAI</option>
-                        <option value="gemini">Google Gemini</option>
-                        <option value="custom">Custom / Other</option>
+                        <option value="custom">Custom</option>
                     </select>
                     <label class="block text-xs font-bold text-slate-500 mb-1">Model</label>
                     <select id="setting-model" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select>
-                    <input type="text" id="setting-model-custom" placeholder="e.g. openai/my-model"
-                        class="hidden w-full mt-2 border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                    <label class="block text-xs font-bold text-slate-500 mb-1 mt-3">
-                        Summary Model <span class="font-normal text-slate-400 ml-1">for evidence scoring</span>
-                    </label>
-                    <select id="setting-summary-provider" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none mb-2">
-                        <option value="same">— Same as main model —</option>
-                        <option value="deepseek">DeepSeek</option>
-                        <option value="kimi">Kimi (Moonshot)</option>
-                        <option value="openai">OpenAI</option>
-                    </select>
-                    <select id="setting-summary-model" class="hidden w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select>
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-500 mb-1">API Key</label>
-                    <input type="password" id="setting-key" placeholder="Leave blank to use .env"
-                        class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    <input type="password" id="setting-key" placeholder="Leave blank to use .env" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-500 mb-1">API Base URL</label>
-                    <input type="text" id="setting-base" placeholder="Optional custom endpoint"
-                        class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
-            </section>
-
-            <section class="space-y-4">
-                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest border-b pb-1">Retrieval Settings</h3>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-xs font-bold text-slate-500 mb-1">Evidence K</label>
-                        <input type="number" id="setting-k" value="50" min="5" max="200"
-                            class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-500 mb-1">Max Sources</label>
-                        <input type="number" id="setting-sources" value="5" min="1" max="10"
-                            class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                    </div>
+                    <input type="text" id="setting-base" placeholder="Optional" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
             </section>
         </div>
-
         <div class="pt-6 border-t mt-6 space-y-3">
             <button id="test-llm-btn" class="w-full border border-slate-200 hover:bg-slate-50 text-slate-700 py-2 rounded-md text-sm font-bold transition flex items-center justify-center space-x-2">
                 <i class="fas fa-plug text-slate-400"></i><span>Test Connection</span>
             </button>
-            <div id="test-status" class="text-[10px] text-center hidden break-words p-2 rounded bg-slate-50"></div>
+            <div id="test-status" class="text-[10px] text-center hidden p-2 rounded bg-slate-50"></div>
             <button id="apply-settings" class="w-full bg-slate-800 hover:bg-slate-900 text-white py-2 rounded-md text-sm font-bold transition">Apply Settings</button>
         </div>
     </div>
 
-    <header class="bg-white border-b border-slate-200 px-6 py-3 flex justify-between items-center sticky top-0 z-10 shadow-sm">
+    <header class="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm">
         <div class="flex items-center space-x-2">
-            <div class="bg-blue-600 text-white p-1.5 rounded-lg"><i class="fas fa-book-open"></i></div>
-            <h1 class="text-lg font-bold tracking-tight">LCR <span class="text-blue-600">· Literature Citation-RAG</span></h1>
+            <div class="bg-blue-600 text-white p-1.5 rounded-lg shadow-inner"><i class="fas fa-dna"></i></div>
+            <h1 class="text-xl font-bold tracking-tight">LCR <span class="text-blue-600">Research Brain</span></h1>
         </div>
-        <div class="flex items-center space-x-4">
-            <div class="flex items-center space-x-2 border-r pr-4 border-slate-200">
-                <span id="selected-summary" class="text-sm font-medium text-slate-500">Auto-retrieval mode</span>
-                <button id="clear-selection-btn" class="text-xs text-red-500 hover:text-red-700 hover:underline transition hidden">Clear Selection</button>
+        <div class="flex items-center space-x-6">
+            <div class="flex items-center space-x-2 px-3 py-1 bg-slate-50 border border-slate-100 rounded-full">
+                <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                <span class="text-xs text-slate-500 font-mono">1,220 Papers Indexed</span>
             </div>
-            <button id="open-settings" class="text-slate-400 hover:text-slate-600 p-2 transition" title="Settings"><i class="fas fa-cog text-xl"></i></button>
+            <button id="open-settings" class="text-slate-400 hover:text-slate-600 p-1 transition"><i class="fas fa-sliders-h text-xl"></i></button>
         </div>
     </header>
 
-    <main class="flex-1 min-h-0 flex overflow-hidden">
-        <!-- Zotero Tree -->
-        <aside class="w-80 border-r border-slate-200 bg-white flex flex-col">
-            <div class="p-4 space-y-4">
-                <div class="relative">
-                    <input type="text" id="tree-search" placeholder="Search title or DOI..." 
-                        class="w-full bg-slate-100 border-none rounded-md py-2 pl-9 pr-3 text-sm focus:ring-2 focus:ring-blue-500 transition">
-                    <i class="fas fa-search absolute left-3 top-2.5 text-slate-400 text-sm"></i>
+    <main class="flex-1 min-h-0 flex flex-col bg-white overflow-hidden items-center">
+        <!-- Center Chat Container -->
+        <div class="w-full max-w-4xl h-full flex flex-col shadow-2xl shadow-slate-200/50">
+            <!-- Search Area -->
+            <div class="p-8 bg-white border-b border-slate-100">
+                <div class="mb-4">
+                    <textarea id="question" rows="3"
+                        class="w-full border-2 border-slate-100 rounded-2xl p-5 text-slate-800 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition resize-none text-lg leading-relaxed placeholder:text-slate-300"
+                        placeholder="What is the binding energy of CO2 on copper surfaces?"></textarea>
                 </div>
-            </div>
-            <div id="tree-container" class="flex-1 overflow-y-auto p-2 custom-scrollbar">
-                <div id="tree-loading" class="flex flex-col items-center justify-center h-40 text-slate-400">
-                    <i class="fas fa-circle-notch fa-spin text-2xl mb-2"></i><span class="text-xs">Loading Zotero...</span>
-                </div>
-            </div>
-        </aside>
 
-        <!-- Chat Area -->
-        <section class="flex-1 min-h-0 flex flex-col bg-slate-50 overflow-hidden">
-            <div class="p-6 bg-white border-b border-slate-200">
-                <div class="max-w-3xl mx-auto">
-                    <div class="mb-4">
-                        <textarea id="question" rows="3"
-                            class="w-full border border-slate-200 rounded-xl p-4 text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition resize-none shadow-sm"
-                            placeholder="Ask a scientific question..."></textarea>
-                    </div>
-
-                    <div class="flex items-center space-x-2 mb-3">
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center space-x-3">
                         <select id="prompt-template-select"
-                            class="border border-slate-200 rounded-md px-3 py-1.5 text-xs text-slate-600 focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                            class="border border-slate-200 rounded-lg px-4 py-2 text-sm text-slate-600 focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50 hover:bg-slate-100 transition">
                             <option value="">Loading templates...</option>
                         </select>
-                        <button id="edit-prompt-btn" class="text-slate-400 hover:text-slate-600 transition text-xs px-2 py-1.5 border border-slate-200 rounded-md bg-white" title="Edit template"><i class="fas fa-pen"></i></button>
+                        <button id="edit-prompt-btn" class="text-slate-400 hover:text-blue-600 p-2" title="Edit Template"><i class="fas fa-edit"></i></button>
                     </div>
-
-                    <div id="prompt-edit-panel" class="hidden mb-3">
-                        <textarea id="prompt-content-input" rows="4" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-700"></textarea>
-                    </div>
-
-                    <div class="flex justify-between items-center">
-                        <div class="flex space-x-2">
-                            <div id="llm-badge" class="px-2 py-1 bg-slate-100 rounded text-[10px] text-slate-500 font-mono">Model: deepseek/deepseek-chat</div>
-                            <div id="retrieval-badge" class="px-2 py-1 bg-slate-100 rounded text-[10px] text-slate-400 font-mono">Auto-retrieval</div>
-                        </div>
-                        <button id="ask-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-10 py-2.5 rounded-lg font-bold shadow-md flex items-center space-x-2">
-                            <i class="fas fa-search"></i><span>Ask Research Brain</span>
-                        </button>
-                    </div>
+                    <button id="ask-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-10 py-3 rounded-xl font-black transition shadow-lg shadow-blue-500/30 flex items-center space-x-3">
+                        <i class="fas fa-paper-plane"></i><span>Execute Research Query</span>
+                    </button>
+                </div>
+                
+                <div id="prompt-edit-panel" class="hidden mt-4">
+                    <textarea id="prompt-content-input" rows="6" class="w-full border border-slate-200 rounded-xl p-3 text-xs font-mono text-slate-600 bg-slate-50"></textarea>
                 </div>
             </div>
 
-            <div id="result-area" class="flex-1 min-h-0 overflow-y-auto p-8 custom-scrollbar">
-                <div id="welcome-screen" class="h-full flex flex-col items-center justify-center text-slate-400 space-y-4">
-                    <i class="fas fa-microscope text-6xl opacity-20"></i><p class="text-lg">Ask a question to search across literature.</p>
+            <!-- Result Area -->
+            <div id="result-area" class="flex-1 overflow-y-auto p-10 custom-scrollbar bg-slate-50/30">
+                <div id="welcome-screen" class="h-full flex flex-col items-center justify-center text-slate-300 space-y-6">
+                    <div class="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center">
+                        <i class="fas fa-atom text-5xl opacity-40"></i>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-xl font-bold text-slate-400">Ready for Systematic Review</p>
+                        <p class="text-sm">Type your scientific question to analyze 1,220 indexed papers.</p>
+                    </div>
                 </div>
-                <div id="answer-container" class="hidden max-w-4xl mx-auto space-y-8 pb-12">
-                    <article class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-                        <div id="answer-text" class="text-slate-800 text-lg leading-relaxed"></div>
+
+                <div id="answer-container" class="hidden space-y-10 pb-20">
+                    <article class="bg-white p-10 rounded-3xl shadow-xl shadow-slate-200/40 border border-slate-100 relative">
+                        <div class="absolute -top-4 left-8 px-4 py-1 bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-full">Synthesized Answer</div>
+                        <div id="answer-text" class="text-slate-800 text-lg"></div>
                     </article>
-                    <div id="citations-list" class="grid grid-cols-1 gap-4"></div>
+                    
+                    <div class="space-y-6">
+                        <h3 class="px-2 text-xs font-black text-slate-400 uppercase tracking-widest flex items-center">
+                            <i class="fas fa-microscope mr-2"></i>Supporting Evidence & Citations
+                        </h3>
+                        <div id="citations-list" class="space-y-4"></div>
+                    </div>
                 </div>
             </div>
-        </section>
+        </div>
     </main>
 
     <script>
         const PROVIDER_MODELS = {
             deepseek: { apiBase: "", models: [{ value: "deepseek/deepseek-chat", label: "DeepSeek V3" }, { value: "deepseek/deepseek-reasoner", label: "DeepSeek R1" }] },
             kimi: { apiBase: "https://api.moonshot.cn/v1", models: [{ value: "openai/kimi-k2.6", label: "Kimi K2.6" }] },
+            openai: { apiBase: "", models: [{ value: "gpt-4o", label: "GPT-4o" }, { value: "o1", label: "o1-preview" }] },
             custom: { apiBase: "", models: [] }
         };
 
-        let collections = [];
-        let selectedDois = new Set();
-        let searchKeyword = '';
         let llmSettings = { llm: "deepseek/deepseek-chat", summary_llm: "", api_key: "", api_base: "", multimodal: 0, evidence_k: 50, max_sources: 5, prompt_template: "" };
 
-        // DOM refs
-        const askBtn = document.getElementById('ask-btn'), questionInput = document.getElementById('question'), welcomeScreen = document.getElementById('welcome-screen'), answerContainer = document.getElementById('answer-container'), answerText = document.getElementById('answer-text'), citationsList = document.getElementById('citations-list'), llmBadge = document.getElementById('llm-badge'), retrievalBadge = document.getElementById('retrieval-badge'), selectedSummary = document.getElementById('selected-summary'), clearSelectionBtn = document.getElementById('clear-selection-btn'), treeContainer = document.getElementById('tree-container'), treeSearch = document.getElementById('tree-search');
-        const openSettingsBtn = document.getElementById('open-settings'), closeSettingsBtn = document.getElementById('close-settings'), settingsDrawer = document.getElementById('settings-drawer'), drawerOverlay = document.getElementById('drawer-overlay'), applySettingsBtn = document.getElementById('apply-settings'), testLlmBtn = document.getElementById('test-llm-btn'), testStatus = document.getElementById('test-status'), settingProvider = document.getElementById('setting-provider'), settingModel = document.getElementById('setting-model'), settingModelCustom = document.getElementById('setting-model-custom'), settingKey = document.getElementById('setting-key'), settingBase = document.getElementById('setting-base'), settingK = document.getElementById('setting-k'), settingSources = document.getElementById('setting-sources'), settingSummaryProvider = document.getElementById('setting-summary-provider'), settingSummaryModel = document.getElementById('setting-summary-model');
-        const promptTemplateSelect = document.getElementById('prompt-template-select'), editPromptBtn = document.getElementById('edit-prompt-btn'), promptEditPanel = document.getElementById('prompt-edit-panel'), promptContentInput = document.getElementById('prompt-content-input');
-
-        // --- Zotero Tree ---
-        async function fetchCollections() {
-            treeContainer.innerHTML = '<div class="text-center p-4 text-slate-400 text-xs">Loading...</div>';
-            try {
-                const res = await fetch('/zotero/collections');
-                const data = await res.json();
-                collections = data.collections; renderTree();
-            } catch (err) { treeContainer.innerHTML = 'Error'; }
-        }
-
-        function renderTree() {
-            treeContainer.innerHTML = '';
-            const rootCollections = collections.filter(c => !c.parent_id);
-            rootCollections.forEach(col => {
-                const el = createCollectionEl(col);
-                if (el) treeContainer.appendChild(el);
-            });
-        }
-
-        function createCollectionEl(col) {
-            const li = document.createElement('div');
-            const items = col.items.filter(i => i.title.toLowerCase().includes(searchKeyword) || i.doi.toLowerCase().includes(searchKeyword));
-            if (searchKeyword && items.length === 0) return null;
-
-            li.innerHTML = `<div class="collection-node flex items-center py-1 px-2 hover:bg-slate-50 cursor-pointer text-sm font-medium">
-                <i class="fas fa-folder text-amber-400 mr-2"></i><span>${col.name}</span>
-            </div><ul class="ml-4 border-l border-slate-100 pl-2"></ul>`;
-            
-            const ul = li.querySelector('ul');
-            items.forEach(item => {
-                const div = document.createElement('div');
-                div.className = 'flex items-start py-1 px-2 text-[12px] hover:bg-blue-50 cursor-pointer';
-                div.innerHTML = `<input type="checkbox" class="mr-2 mt-1" ${selectedDois.has(item.doi) ? 'checked' : ''}><span>${item.title}</span>`;
-                div.onclick = (e) => {
-                    const cb = div.querySelector('input');
-                    if (e.target !== cb) cb.checked = !cb.checked;
-                    if (cb.checked) selectedDois.add(item.doi); else selectedDois.delete(item.doi);
-                    updateSummary();
-                };
-                ul.appendChild(div);
-            });
-            return li;
-        }
-
-        function updateSummary() {
-            selectedSummary.textContent = selectedDois.size > 0 ? `Selected: ${selectedDois.size} papers` : "Auto-retrieval mode";
-            retrievalBadge.textContent = selectedDois.size > 0 ? `Filter: ${selectedDois.size}` : "Auto-retrieval";
-            clearSelectionBtn.classList.toggle('hidden', selectedDois.size === 0);
-        }
-
-        treeSearch.oninput = (e) => { searchKeyword = e.target.value.toLowerCase(); renderTree(); };
-        clearSelectionBtn.onclick = () => { selectedDois.clear(); renderTree(); updateSummary(); };
-
-        // --- Prompts ---
-        async function loadPromptTemplates() {
-            try {
-                const res = await fetch('/prompts');
-                const data = await res.json();
-                promptTemplateSelect.innerHTML = '<option value="">— Select Template —</option>';
-                data.templates.forEach(t => {
-                    const opt = document.createElement('option');
-                    opt.value = t.template;
-                    opt.textContent = t.name;
-                    promptTemplateSelect.appendChild(opt);
-                });
-                if (data.templates.length > 0) {
-                    promptTemplateSelect.value = data.templates[0].template;
-                    promptContentInput.value = data.templates[0].template;
-                    llmSettings.prompt_template = data.templates[0].template;
-                }
-            } catch (e) {}
-        }
-        promptTemplateSelect.onchange = () => { llmSettings.prompt_template = promptContentInput.value = promptTemplateSelect.value; };
-        editPromptBtn.onclick = () => promptEditPanel.classList.toggle('hidden');
+        // DOM
+        const askBtn = document.getElementById('ask-btn'), questionInput = document.getElementById('question'), welcomeScreen = document.getElementById('welcome-screen'), answerContainer = document.getElementById('answer-container'), answerText = document.getElementById('answer-text'), citationsList = document.getElementById('citations-list'), promptTemplateSelect = document.getElementById('prompt-template-select'), promptEditPanel = document.getElementById('prompt-edit-panel'), promptContentInput = document.getElementById('prompt-content-input');
+        const openSettingsBtn = document.getElementById('open-settings'), closeSettingsBtn = document.getElementById('close-settings'), settingsDrawer = document.getElementById('settings-drawer'), drawerOverlay = document.getElementById('drawer-overlay'), applySettingsBtn = document.getElementById('apply-settings'), testLlmBtn = document.getElementById('test-llm-btn'), testStatus = document.getElementById('test-status'), settingProvider = document.getElementById('setting-provider'), settingModel = document.getElementById('setting-model'), settingKey = document.getElementById('setting-key'), settingBase = document.getElementById('setting-base');
 
         // --- Settings ---
         const closeDrawer = () => { settingsDrawer.classList.remove('open'); drawerOverlay.classList.remove('open'); };
@@ -284,36 +166,78 @@
         }
         settingProvider.onchange = onProviderChange;
         applySettingsBtn.onclick = () => {
-            llmSettings = { ...llmSettings, llm: settingModel.value, api_key: settingKey.value, api_base: settingBase.value, evidence_k: parseInt(settingK.value), max_sources: parseInt(settingSources.value) };
-            llmBadge.textContent = `Model: ${llmSettings.llm}`;
+            llmSettings = { ...llmSettings, llm: settingModel.value, api_key: settingKey.value.trim(), api_base: settingBase.value.trim() };
             closeDrawer();
         };
 
-        // --- Ask ---
+        testLlmBtn.onclick = async () => {
+            testLlmBtn.disabled = true;
+            testStatus.classList.remove('hidden');
+            testStatus.textContent = 'Testing...';
+            try {
+                const res = await fetch('/admin/test-llm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ llm: settingModel.value, api_key: settingKey.value.trim(), api_base: settingBase.value.trim() }) });
+                const result = await res.json();
+                testStatus.textContent = result.status === 'success' ? 'Connection OK' : 'Error: ' + result.message;
+                testStatus.className = `text-[10px] text-center p-2 rounded ${result.status === 'success' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`;
+            } catch (e) { testStatus.textContent = 'Failed: ' + e.message; }
+            finally { testLlmBtn.disabled = false; }
+        };
+
+        // --- Prompts ---
+        async function loadPromptTemplates() {
+            try {
+                const res = await fetch('/prompts');
+                const data = await res.json();
+                promptTemplateSelect.innerHTML = data.templates.map(t => `<option value="${t.template.replace(/"/g, '&quot;')}">${t.name}</option>`).join('');
+                if (data.templates.length > 0) {
+                    promptTemplateSelect.value = data.templates[0].template;
+                    promptContentInput.value = data.templates[0].template;
+                    llmSettings.prompt_template = data.templates[0].template;
+                }
+            } catch (e) {}
+        }
+        promptTemplateSelect.onchange = () => { llmSettings.prompt_template = promptContentInput.value = promptTemplateSelect.value; };
+        document.getElementById('edit-prompt-btn').onclick = () => promptEditPanel.classList.toggle('hidden');
+
+        // --- Execute ---
         askBtn.onclick = async () => {
             const question = questionInput.value.trim(); if (!question) return;
-            askBtn.disabled = true; askBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Asking...</span>';
+            askBtn.disabled = true; askBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i><span>Analyzing Database...</span>';
             try {
                 const res = await fetch('/ask', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ question, dois: selectedDois.size > 0 ? Array.from(selectedDois) : null, llm_settings: llmSettings })
+                    body: JSON.stringify({ question, dois: null, llm_settings: llmSettings })
                 });
                 const data = await res.json();
                 welcomeScreen.classList.add('hidden'); answerContainer.classList.remove('hidden');
                 answerText.innerHTML = marked.parse(data.answer);
-                citationsList.innerHTML = data.citations.map(c => `<div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 text-xs">
-                    <div class="font-bold text-blue-600 mb-2">[${c.display_index}] ${c.metadata.title || c.doc_id}</div>
-                    <div class="italic text-slate-600">"${c.snippet}..."</div>
-                </div>`).join('');
+                citationsList.innerHTML = data.citations.map(c => {
+                    const meta = c.metadata || {};
+                    const year = (meta.year || '').slice(0,4);
+                    const authors = meta.creators ? (meta.creators.split(';')[0] + (meta.creators.includes(';') ? ' et al.' : '')) : 'Unknown';
+                    return `<div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:border-blue-200 transition group">
+                        <div class="flex justify-between items-start mb-3">
+                            <div class="flex items-center space-x-3">
+                                <span class="bg-blue-50 text-blue-600 w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm">${c.display_index}</span>
+                                <div>
+                                    <div class="text-sm font-bold text-slate-800">${meta.title || c.doc_id}</div>
+                                    <div class="text-[10px] text-slate-400 mt-0.5">${authors} (${year}) · ${meta.publication || ''}</div>
+                                </div>
+                            </div>
+                            <span class="text-[10px] font-mono text-slate-300 group-hover:text-blue-400 transition">${meta.doi}</span>
+                        </div>
+                        <div class="text-xs text-slate-600 leading-relaxed pl-11">"${c.snippet}..."</div>
+                        ${meta.citation_key ? `<div class="mt-2 pl-11 text-[9px] font-mono text-slate-400 uppercase tracking-widest">Key: ${meta.citation_key}</div>` : ''}
+                    </div>`;
+                }).join('');
+                document.getElementById('result-area').scrollTo({ top: 0, behavior: 'smooth' });
             } catch (err) { alert(err.message); }
-            finally { askBtn.disabled = false; askBtn.innerHTML = '<i class="fas fa-search"></i><span>Ask Research Brain</span>'; }
+            finally { askBtn.disabled = false; askBtn.innerHTML = '<i class="fas fa-paper-plane"></i><span>Execute Research Query</span>'; }
         };
 
-        // Init
         onProviderChange();
         loadPromptTemplates();
-        fetchCollections();
     </script>
 </body>
 </html>
