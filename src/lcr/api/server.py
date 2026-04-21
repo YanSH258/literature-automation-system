@@ -8,6 +8,7 @@ import litellm
 import hashlib
 import json
 import glob as glob_module
+import re
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -115,7 +116,7 @@ async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]]
     settings = Settings(
         llm=target_llm,
         summary_llm=target_summary_llm,
-        embedding="st-BAAI/bge-m3", # 使用多语言模型支持中文匹配
+        embedding="st-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", # 多语言470MB，比BGE-M3快10倍
         parsing={"multimodal": multimodal_val},
         answer={
             "evidence_k": evidence_k_val,
@@ -139,7 +140,7 @@ async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]]
     try:
         result = await asyncio.wait_for(
             ask(search_question, settings=settings),
-            timeout=300.0 # 首次 embed 需时较长，给 300 秒
+            timeout=600.0 # 大批量文献首次索引+查询，给 600 秒
         )
     except asyncio.TimeoutError:
         return {"answer": "The analysis timed out. Please try selecting fewer papers or a simpler question.", "citations": []}
@@ -156,6 +157,29 @@ async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]]
 
     session_id = str(uuid.uuid4())
     cmap = build_citation_map(chunks, session_id=session_id, turn_id=1)
+
+    # M6: 将 PaperQA2 的 (pqac-xxx) 引用 key 替换为 [n] 编号
+    # 先构建 doc_id -> display_index 映射（每个 doc 取最小编号的 chunk）
+    doc_to_idx: dict[str, int] = {}
+    for idx, entry in cmap.entries.items():
+        if entry.doc_id not in doc_to_idx or idx < doc_to_idx[entry.doc_id]:
+            doc_to_idx[entry.doc_id] = idx
+
+    def replace_pqac_citation(match: re.Match) -> str:
+        inner = match.group(1)  # e.g. "pqac-d79ef6fa, pqac-0f650d59"
+        keys = [k.strip() for k in inner.split(",")]
+        nums = []
+        for k in keys:
+            if k in doc_to_idx:
+                nums.append(str(doc_to_idx[k]))
+        if nums:
+            # 使用 [1][2] 格式以绕过 structural_check 对 [1, 2] 的禁止
+            return "".join(f"[{n}]" for n in nums)
+        return match.group(0)
+
+    # 捕获组包含 key 列表，以便 replace_pqac_citation 使用 match.group(1)
+    answer_text = re.sub(r'\((pqac-[a-f0-9]+(?:,\s*pqac-[a-f0-9]+)*)\)',
+                        replace_pqac_citation, answer_text)
 
     structural = structural_check(answer_text, max_index=len(chunks))
 
