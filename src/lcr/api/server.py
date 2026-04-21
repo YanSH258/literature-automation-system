@@ -2,7 +2,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
+import re
 import tempfile
+import asyncio
+import litellm
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -22,9 +25,11 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 class LLMSettings(BaseModel):
     llm: str = "deepseek/deepseek-chat"
-    api_key: str = ""          # 可选，覆盖环境变量
-    api_base: str = ""         # 可选，自定义接口地址
-    enable_multimodal: bool = False # 是否开启图片识别
+    api_key: str = ""
+    api_base: str = ""
+    multimodal: int = 0
+    evidence_k: int = 10
+    max_sources: int = 5
 
 class AskRequest(BaseModel):
     question: str
@@ -32,14 +37,33 @@ class AskRequest(BaseModel):
     dois: Optional[List[str]] = None
     llm_settings: Optional[LLMSettings] = None
 
+async def translate_to_english(text: str, llm: str) -> str:
+    """如果检测到中文，将其翻译为英文以便搜索。"""
+    try:
+        resp = await litellm.acompletion(
+            model=llm,
+            messages=[{
+                "role": "user",
+                "content": f"Translate the following scientific query into concise English for literature search. Return ONLY the English translation, no other text:\n\n{text}"
+            }],
+            temperature=0
+        )
+        translation = resp.choices[0].message.content.strip()
+        print(f"Translation: '{text}' -> '{translation}'")
+        return translation
+    except Exception as e:
+        print(f"Translation failed: {e}")
+        return text
+
 async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]] = None, llm_settings: Optional[LLMSettings] = None) -> dict:
-    tmp_dir = None
+    # 1. 环境与路径准备
+    if not os.path.exists(paper_dir):
+        os.makedirs(paper_dir, exist_ok=True)
 
     if dois:
         ingestor = ZoteroIngestor()
         all_records = ingestor.load_records()
         doi_to_record = {r.doi.lower(): r for r in all_records}
-
         tmp_dir = tempfile.mkdtemp(prefix="lcr_papers_")
         linked = 0
         for d in dois:
@@ -47,59 +71,70 @@ async def query_paperqa(question: str, paper_dir: str, dois: Optional[List[str]]
             if rec and rec.pdf_path and os.path.exists(rec.pdf_path):
                 pdf = Path(rec.pdf_path)
                 dest = Path(tmp_dir) / f"{pdf.parent.name}_{pdf.name}"
-                if not dest.exists():
-                    os.symlink(pdf, dest)
+                if not dest.exists(): os.symlink(pdf, dest)
                 linked += 1
-
-        if linked == 0:
-            raise ValueError("No valid PDFs found for the selected DOIs")
+        if linked == 0: raise ValueError("No valid PDFs found for the selected DOIs")
         paper_dir = tmp_dir
 
-    # 处理 LLM 设置
+    # 2. 模型与 API 配置
     target_llm = "deepseek/deepseek-chat"
-    llm_config = {}
-    use_multimodal = False
-    
     if llm_settings:
         target_llm = llm_settings.llm
-        use_multimodal = llm_settings.enable_multimodal
         if llm_settings.api_key:
-            key_name = ""
-            lower_llm = target_llm.lower()
-            if "deepseek" in lower_llm: key_name = "DEEPSEEK_API_KEY"
-            elif "claude" in lower_llm or "anthropic" in lower_llm: key_name = "ANTHROPIC_API_KEY"
-            elif "gpt" in lower_llm or "openai" in lower_llm: key_name = "OPENAI_API_KEY"
-            elif "moonshot" in lower_llm or "kimi" in lower_llm: key_name = "MOONSHOT_API_KEY"
-            elif "gemini" in lower_llm: key_name = "GEMINI_API_KEY"
-            
-            if key_name:
-                os.environ[key_name] = llm_settings.api_key
+            if "deepseek" in target_llm.lower(): os.environ["DEEPSEEK_API_KEY"] = llm_settings.api_key
+            elif "claude" in target_llm.lower() or "anthropic" in target_llm.lower(): os.environ["ANTHROPIC_API_KEY"] = llm_settings.api_key
+            elif "moonshot" in target_llm.lower() or "kimi" in target_llm.lower(): os.environ["MOONSHOT_API_KEY"] = llm_settings.api_key
+            elif "gemini" in target_llm.lower(): os.environ["GEMINI_API_KEY"] = llm_settings.api_key
+            else: os.environ["OPENAI_API_KEY"] = llm_settings.api_key
         
-        if llm_settings.api_base:
-            llm_config["api_base"] = llm_settings.api_base
+        # 全局设置 litellm.api_base 以便支持自定义服务商
+        litellm.api_base = llm_settings.api_base if llm_settings.api_base else None
+
+    # 3. 中文提问预处理
+    search_question = question
+    answer_language_instruction = ""
+    if re.search(r'[\u4e00-\u9fff]', question):
+        # 翻译成英文搜索，但要求模型用中文回答
+        search_question = await translate_to_english(question, target_llm)
+        answer_language_instruction = " Please provide the final answer in Chinese (简体中文)."
+
+    # 4. 构造 PaperQA2 设置
+    multimodal_val = llm_settings.multimodal if llm_settings else 0
+    evidence_k_val = llm_settings.evidence_k if llm_settings else 10
+    max_sources_val = llm_settings.max_sources if llm_settings else 5
 
     settings = Settings(
         llm=target_llm,
         summary_llm=target_llm,
-        llm_config=llm_config if llm_config else None,
-        summary_llm_config=llm_config if llm_config else None,
-        embedding="st-BAAI/bge-small-en-v1.5",
-        parsing={
-            "use_doc_details": use_multimodal, 
-            "multimodal": "on with enrichment" if use_multimodal else False
+        embedding="st-BAAI/bge-m3", # 使用多语言模型支持中文匹配
+        parsing={"multimodal": multimodal_val},
+        answer={
+            "evidence_k": evidence_k_val,
+            "answer_max_sources": max_sources_val,
         },
         agent={
             "agent_llm": target_llm,
-            "agent_llm_config": {"model_list": [{"model_name": target_llm}]} if llm_config else None,
+            "search_count": 3, # 限制 Agent 最大搜索次数，防止死循环
             "index": {
                 "paper_directory": paper_dir,
                 "recurse_subdirectories": False,
             },
         },
+        prompts={
+            "summary": "Summarize the text relevant to the question: {question}. Context: {context}. Focus on objective findings." + answer_language_instruction
+        }
     )
 
-    result = await ask(question, settings=settings)
+    # 5. 执行查询（带超时保护）
+    try:
+        result = await asyncio.wait_for(
+            ask(search_question, settings=settings),
+            timeout=120.0 # 文献阅读可能耗时，给 120 秒
+        )
+    except asyncio.TimeoutError:
+        return {"answer": "The analysis timed out. Please try selecting fewer papers or a simpler question.", "citations": []}
 
+    # 6. 构造返回结果
     citations = []
     if result.session and result.session.contexts:
         for ctx in result.session.contexts:

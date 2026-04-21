@@ -29,10 +29,6 @@
         #settings-drawer.open { transform: translateX(0); }
         #drawer-overlay { transition: opacity 0.3s ease-in-out; pointer-events: none; opacity: 0; }
         #drawer-overlay.open { pointer-events: auto; opacity: 1; }
-
-        /* Toggle Switch */
-        .toggle-checkbox:checked { right: 0; border-color: #3b82f6; }
-        .toggle-checkbox:checked + .toggle-label { background-color: #3b82f6; }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen flex flex-col font-sans text-slate-900 overflow-hidden">
@@ -41,53 +37,74 @@
     <!-- Settings Drawer -->
     <div id="settings-drawer" class="fixed top-0 right-0 h-full w-80 bg-white shadow-2xl z-50 p-6 flex flex-col">
         <div class="flex justify-between items-center mb-8">
-            <h2 class="text-lg font-bold flex items-center"><i class="fas fa-cog mr-2 text-slate-400"></i>LLM Settings</h2>
+            <h2 class="text-lg font-bold flex items-center"><i class="fas fa-cog mr-2 text-slate-400"></i>Settings</h2>
             <button id="close-settings" class="text-slate-400 hover:text-slate-600 transition"><i class="fas fa-times"></i></button>
         </div>
         
         <div class="flex-1 space-y-6 overflow-y-auto pr-2 custom-scrollbar">
-            <div>
-                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Model</label>
-                <select id="setting-model" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                    <option value="deepseek/deepseek-chat">DeepSeek V3 (Chat)</option>
-                    <option value="moonshot/moonshot-v2-128k">Kimi (moonshot-v2-128k)</option>
-                    <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
-                    <option value="gpt-4o-2024-11-20">GPT-4o (2024-11-20)</option>
-                    <option value="gemini/gemini-1.5-pro">Gemini 1.5 Pro</option>
-                </select>
-                <div class="mt-2">
-                    <input type="text" id="setting-model-custom" placeholder="Or type custom model name..." 
+            <!-- LLM Section -->
+            <section class="space-y-4">
+                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest border-b pb-1">LLM Configuration</h3>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">Model</label>
+                    <select id="setting-model" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="deepseek/deepseek-chat">DeepSeek V3 (Chat)</option>
+                        <option value="moonshot/moonshot-v2-128k">Kimi (moonshot-v2-128k)</option>
+                        <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+                        <option value="gpt-4o-2024-11-20">GPT-4o (2024-11-20)</option>
+                        <option value="gemini/gemini-1.5-pro">Gemini 1.5 Pro</option>
+                    </select>
+                    <input type="text" id="setting-model-custom" placeholder="Custom model name..." 
+                        class="w-full mt-2 border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">API Key</label>
+                    <input type="password" id="setting-key" placeholder="Leave blank to use .env" 
                         class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
-            </div>
-
-            <div class="flex items-center justify-between">
                 <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider">Enable Multimodal</label>
-                    <p class="text-[10px] text-slate-400">Analyze images/figures in papers</p>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">API Base URL</label>
+                    <input type="text" id="setting-base" placeholder="Optional custom endpoint" 
+                        class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    <p class="text-[10px] text-slate-400 mt-1">
+                        Only for OpenAI-compatible services (e.g. Moonshot, MiniMax, Ollama). 
+                        Example: <code>https://api.moonshot.cn/v1</code>
+                    </p>
                 </div>
-                <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-                    <input type="checkbox" id="setting-multimodal" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer outline-none"/>
-                    <label for="setting-multimodal" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+            </section>
+
+            <!-- Parsing Section -->
+            <section class="space-y-4">
+                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest border-b pb-1">Parsing (Multimodal)</h3>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">Parsing Strategy</label>
+                    <select id="setting-multimodal" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="0">0 - Text Only (Recommended)</option>
+                        <option value="2">2 - Multimodal (No Enrichment)</option>
+                        <option value="1">1 - Multimodal + Enrichment (OpenAI Key required)</option>
+                    </select>
                 </div>
-            </div>
-            
-            <div>
-                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">API Key</label>
-                <input type="password" id="setting-key" placeholder="Leave blank to use .env" 
-                    class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-            </div>
-            
-            <div>
-                <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">API Base URL</label>
-                <input type="text" id="setting-base" placeholder="Optional custom endpoint" 
-                    class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-            </div>
+            </section>
+
+            <!-- Retrieval Section -->
+            <section class="space-y-4">
+                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest border-b pb-1">Retrieval (RAG)</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1">Evidence K</label>
+                        <input type="number" id="setting-k" value="10" min="5" max="30"
+                            class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1">Max Sources</label>
+                        <input type="number" id="setting-sources" value="5" min="1" max="10"
+                            class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                </div>
+            </section>
             
             <div class="bg-blue-50 p-3 rounded-lg border border-blue-100 text-[10px] text-blue-700 leading-normal">
                 <i class="fas fa-info-circle mr-1"></i>
-                For Kimi, use Model: <code>moonshot/moonshot-v1-8k</code> and Base URL: <code>https://api.moonshot.cn/v1</code>.
-                <br><br>
                 Settings are session-only. Key Priority: Settings > .env > Env vars.
             </div>
         </div>
@@ -107,7 +124,7 @@
                 <span id="selected-summary" class="text-sm font-medium text-slate-500">Selected: 0 papers</span>
                 <button id="clear-selection-btn" class="text-xs text-red-500 hover:text-red-700 hover:underline transition hidden">Clear Selection</button>
             </div>
-            <button id="open-settings" class="text-slate-400 hover:text-slate-600 p-2 transition" title="LLM Settings"><i class="fas fa-cog text-xl"></i></button>
+            <button id="open-settings" class="text-slate-400 hover:text-slate-600 p-2 transition" title="Settings"><i class="fas fa-cog text-xl"></i></button>
         </div>
     </header>
 
@@ -146,10 +163,10 @@
                             <div id="vision-badge" class="hidden px-2 py-1 bg-blue-50 rounded text-[10px] text-blue-600 font-bold font-mono">Vision ON</div>
                         </div>
                         <div class="flex space-x-3">
-                            <button id="analyse-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-lg font-bold transition shadow-md flex items-center space-x-2" title="Batch Analysis: Generate structured summary for selected papers">
+                            <button id="analyse-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-lg font-bold transition shadow-md flex items-center space-x-2" title="Batch Analysis">
                                 <i class="fas fa-microscope"></i><span>Analyse</span>
                             </button>
-                            <button id="ask-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2.5 rounded-lg font-bold transition shadow-md flex items-center space-x-2" title="RAG Question: Answer based on selected papers">
+                            <button id="ask-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2.5 rounded-lg font-bold transition shadow-md flex items-center space-x-2" title="RAG Q&A">
                                 <i class="fas fa-search"></i><span>Ask System</span>
                             </button>
                         </div>
@@ -185,20 +202,28 @@
         let collections = [];
         let selectedDois = new Set();
         let searchKeyword = '';
-        let llmSettings = { llm: "deepseek/deepseek-chat", api_key: "", api_base: "", enable_multimodal: false };
+        let llmSettings = { llm: "deepseek/deepseek-chat", api_key: "", api_base: "", multimodal: 0, evidence_k: 10, max_sources: 5 };
 
         // DOM
         const treeContainer = document.getElementById('tree-container'), treeSearch = document.getElementById('tree-search'), loadZoteroBtn = document.getElementById('load-zotero-btn'), askBtn = document.getElementById('ask-btn'), analyseBtn = document.getElementById('analyse-btn'), questionInput = document.getElementById('question'), resultArea = document.getElementById('result-area'), welcomeScreen = document.getElementById('welcome-screen'), answerContainer = document.getElementById('answer-container'), answerText = document.getElementById('answer-text'), citationsList = document.getElementById('citations-list'), errorBox = document.getElementById('error-box'), errorMsg = document.getElementById('error-msg'), selectedSummary = document.getElementById('selected-summary'), clearSelectionBtn = document.getElementById('clear-selection-btn'), llmBadge = document.getElementById('llm-badge'), visionBadge = document.getElementById('vision-badge');
-        const openSettingsBtn = document.getElementById('open-settings'), closeSettingsBtn = document.getElementById('close-settings'), settingsDrawer = document.getElementById('settings-drawer'), drawerOverlay = document.getElementById('drawer-overlay'), applySettingsBtn = document.getElementById('apply-settings'), settingModel = document.getElementById('setting-model'), settingModelCustom = document.getElementById('setting-model-custom'), settingKey = document.getElementById('setting-key'), settingBase = document.getElementById('setting-base'), settingMultimodal = document.getElementById('setting-multimodal');
+        const openSettingsBtn = document.getElementById('open-settings'), closeSettingsBtn = document.getElementById('close-settings'), settingsDrawer = document.getElementById('settings-drawer'), drawerOverlay = document.getElementById('drawer-overlay'), applySettingsBtn = document.getElementById('apply-settings'), settingModel = document.getElementById('setting-model'), settingModelCustom = document.getElementById('setting-model-custom'), settingKey = document.getElementById('setting-key'), settingBase = document.getElementById('setting-base'), settingMultimodal = document.getElementById('setting-multimodal'), settingK = document.getElementById('setting-k'), settingSources = document.getElementById('setting-sources');
 
         fetchCollections();
         openSettingsBtn.onclick = () => { settingsDrawer.classList.add('open'); drawerOverlay.classList.add('open'); };
         const closeDrawer = () => { settingsDrawer.classList.remove('open'); drawerOverlay.classList.remove('open'); };
         closeSettingsBtn.onclick = closeDrawer; drawerOverlay.onclick = closeDrawer;
         applySettingsBtn.onclick = () => {
-            llmSettings = { llm: settingModelCustom.value.trim() || settingModel.value, api_key: settingKey.value.trim(), api_base: settingBase.value.trim(), enable_multimodal: settingMultimodal.checked };
+            llmSettings = { 
+                llm: settingModelCustom.value.trim() || settingModel.value, 
+                api_key: settingKey.value.trim(), 
+                api_base: settingBase.value.trim(), 
+                multimodal: parseInt(settingMultimodal.value),
+                evidence_k: parseInt(settingK.value),
+                max_sources: parseInt(settingSources.value)
+            };
             llmBadge.textContent = `Model: ${llmSettings.llm}`;
-            visionBadge.classList.toggle('hidden', !llmSettings.enable_multimodal);
+            visionBadge.classList.toggle('hidden', llmSettings.multimodal === 0);
+            visionBadge.textContent = llmSettings.multimodal === 1 ? 'Vision+Enrich' : 'Vision ON';
             closeDrawer();
         };
 
