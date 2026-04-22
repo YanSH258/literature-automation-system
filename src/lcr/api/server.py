@@ -129,12 +129,15 @@ Answer (cite every claim with [n], no uncited summary at the end):"""
             messages.extend(conversation_history)
         messages.append({"role": "user", "content": user_msg})
 
-        response = await litellm.acompletion(
-            model=target_llm,
-            api_key=llm_settings.api_key if llm_settings and llm_settings.api_key else None,
-            api_base=llm_settings.api_base if llm_settings and llm_settings.api_base else None,
-            messages=messages
-        )
+        try:
+            response = await litellm.acompletion(
+                model=target_llm,
+                api_key=llm_settings.api_key if llm_settings and llm_settings.api_key else None,
+                api_base=llm_settings.api_base if llm_settings and llm_settings.api_base else None,
+                messages=messages
+            )
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"LLM error: {e}")
         answer_text = response.choices[0].message.content
 
         session_id = str(uuid.uuid4())
