@@ -118,11 +118,12 @@ class ChromaRetriever:
             c.metadata["citation_key"] = c.metadata.get("citation_key") or z_m.get("citation_key", "")
 
         stage_info = {
-            "stage1_docs": len(zotero_metas),
+            "stage1_screened": zotero_prefilter_k,   # Stage 1 目标选纸数
+            "stage1_found": len(zotero_metas),        # Stage 1 实际找到的纸数
             "stage2_raw_chunks": len(raw_chunks),
             "final_chunks": len(chunks),
             "chunks_per_paper": chunks_per_paper,
-            "used_doi_filter": effective_doi_filter is not None,
+            "used_doi_filter": doi_filter is not None,
         }
         return chunks, stage_info
 
@@ -217,4 +218,6 @@ def retrieve_chunks(question, **kwargs) -> tuple[List[LCRChunk], dict]:
     if not CHROMA_DIR.exists():
         return [], {}
     return _get_retriever().retrieve_two_stage(question, **kwargs)
+
+age(question, **kwargs)
 

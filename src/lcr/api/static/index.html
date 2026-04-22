@@ -75,14 +75,10 @@
                         <input type="number" id="setting-k" value="50" min="5" max="200" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-slate-500 mb-1">Max Sources</label>
-                        <input type="number" id="setting-sources" value="15" min="1" max="30" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <label class="block text-xs font-bold text-slate-500 mb-1">Chunks / Paper</label>
+                        <input type="number" id="setting-chunks-per-paper" value="4" min="1" max="10"
+                            class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                     </div>
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-500 mb-1">Chunks / Paper</label>
-                    <input type="number" id="setting-chunks-per-paper" value="4" min="1" max="10"
-                        class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
             </section>
         </div>
@@ -197,8 +193,7 @@
               settingModel = document.getElementById('setting-model'), 
               settingKey = document.getElementById('setting-key'), 
               settingBase = document.getElementById('setting-base'), 
-              settingK = document.getElementById('setting-k'), 
-              settingSources = document.getElementById('setting-sources');
+              settingK = document.getElementById('setting-k');
 
         // --- Settings Logic ---
         const closeDrawer = () => { settingsDrawer.classList.remove('open'); drawerOverlay.classList.remove('open'); };
@@ -206,7 +201,7 @@
             settingKey.value = llmSettings.api_key;
             settingBase.value = llmSettings.api_base;
             settingK.value = llmSettings.evidence_k;
-            settingSources.value = llmSettings.max_sources;
+            document.getElementById('setting-chunks-per-paper').value = llmSettings.chunks_per_paper || 4;
             settingsDrawer.classList.add('open'); drawerOverlay.classList.add('open');
         };
         closeSettingsBtn.onclick = drawerOverlay.onclick = closeDrawer;
@@ -527,6 +522,31 @@
             const config = PROVIDER_MODELS[settingProvider.value];
             settingModel.innerHTML = config.models.map(m => `<option value="${m.value}" ${m.value === llmSettings.llm ? 'selected' : ''}>${m.label}</option>`).join('');
             if (llmSettings.api_base) settingBase.value = llmSettings.api_base;
+        };
+
+        initProvider();
+        loadPromptTemplates();
+        renderHistoryList();
+        updateStats();
+    </script>
+</body>
+</html>
+          break;
+                }
+            }
+            const config = PROVIDER_MODELS[settingProvider.value];
+            settingModel.innerHTML = config.models.map(m => `<option value="${m.value}" ${m.value === llmSettings.llm ? 'selected' : ''}>${m.label}</option>`).join('');
+            if (llmSettings.api_base) settingBase.value = llmSettings.api_base;
+        };
+
+        initProvider();
+        loadPromptTemplates();
+        renderHistoryList();
+        updateStats();
+    </script>
+</body>
+</html>
+tingBase.value = llmSettings.api_base;
         };
 
         initProvider();
