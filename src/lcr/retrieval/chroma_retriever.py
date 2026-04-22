@@ -28,13 +28,14 @@ class ChromaRetriever:
         doi_filter: Optional[List[str]] = None,
         collection_filter: Optional[str] = None,
         tag_filter: Optional[List[str]] = None,
-        zotero_prefilter_k: int = 1000,
-    ) -> List[LCRChunk]:
+        zotero_prefilter_k: int = 30,
+        chunks_per_paper: int = 4,
+    ) -> tuple[List[LCRChunk], dict]:
         """
         两阶段检索：
         1. 第一阶段：从 zotero-mcp 检索 Top-K 摘要，提取 DOI。
         2. 第二阶段：在 LCR 正文库中，限定在上述 DOI 范围内进行全文检索。
-           每篇论文只保留最相关的 1 个 chunk，确保来源多样性。
+           每篇论文保留相关度最高的 chunks_per_paper 个片段。
         """
         effective_doi_filter = doi_filter
         zotero_metas = {}
@@ -82,8 +83,11 @@ class ChromaRetriever:
             except Exception as e:
                 print(f"Warning: Failed to load zotero meta for doi_filter: {e}")
 
-        # 第二阶段：多取候选 chunk，再按论文去重，保证来源多样性
-        fetch_k = n_results * 5  # 多取 5 倍候选
+        # 第二阶段：召回候选 chunk
+        # 每篇取 chunks_per_paper 个，再多取 2 倍缓冲
+        fetch_k = len(effective_doi_filter) * chunks_per_paper * 2 if effective_doi_filter else n_results * 5
+        fetch_k = max(fetch_k, n_results)
+
         raw_chunks = self.retrieve(
             question=question,
             n_results=fetch_k,
@@ -92,13 +96,19 @@ class ChromaRetriever:
             tag_filter=tag_filter
         )
 
-        # 每篇论文只保留语义最相关的 1 个 chunk（Chroma 已按相关度排序，first = best）
-        seen_dois: dict = {}
+        # 每篇保留相关度最高的 chunks_per_paper 个 chunk
+        from collections import defaultdict
+        paper_chunks: dict = defaultdict(list)
         for c in raw_chunks:
-            doi = c.doc_id
-            if doi not in seen_dois:
-                seen_dois[doi] = c
-        chunks = list(seen_dois.values())[:n_results]
+            paper_chunks[c.doc_id].append(c)
+        
+        chunks = []
+        for doi_chunks in paper_chunks.values():
+            chunks.extend(doi_chunks[:chunks_per_paper])
+            
+        # 按相关度重新排序，截断到 n_results
+        chunks.sort(key=lambda c: c.rcs_score, reverse=True)
+        chunks = chunks[:n_results]
 
         # 补全元数据
         for c in chunks:
@@ -111,6 +121,7 @@ class ChromaRetriever:
             "stage1_docs": len(zotero_metas),
             "stage2_raw_chunks": len(raw_chunks),
             "final_chunks": len(chunks),
+            "chunks_per_paper": chunks_per_paper,
             "used_doi_filter": effective_doi_filter is not None,
         }
         return chunks, stage_info

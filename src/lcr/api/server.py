@@ -81,7 +81,8 @@ async def query_paperqa(question: str, paper_dir: str,
             n_results=llm_settings.evidence_k if llm_settings else 20,
             doi_filter=dois,
             collection_filter=collection_filter,
-            tag_filter=tag_filter
+            tag_filter=tag_filter,
+            chunks_per_paper=llm_settings.chunks_per_paper if llm_settings else 4
         )
         
         if chunks:
