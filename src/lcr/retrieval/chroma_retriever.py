@@ -103,12 +103,17 @@ class ChromaRetriever:
         # 补全元数据
         for c in chunks:
             z_m = zotero_metas.get(c.doc_id.lower().strip(), {})
-            # 只有当 metadata 中缺失这些字段时才补全（或者直接覆盖以确保最新）
             c.metadata["creators"] = c.metadata.get("creators") or z_m.get("creators", "")
             c.metadata["publication"] = c.metadata.get("publication") or z_m.get("publication", "")
             c.metadata["citation_key"] = c.metadata.get("citation_key") or z_m.get("citation_key", "")
 
-        return chunks
+        stage_info = {
+            "stage1_docs": len(zotero_metas),
+            "stage2_raw_chunks": len(raw_chunks),
+            "final_chunks": len(chunks),
+            "used_doi_filter": effective_doi_filter is not None,
+        }
+        return chunks, stage_info
 
     def retrieve(
         self,
