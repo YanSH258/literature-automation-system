@@ -106,10 +106,13 @@ class ChromaRetriever:
         fetch_k = len(effective_doi_filter) * chunks_per_paper * 2 if effective_doi_filter else n_results * 5
         fetch_k = max(fetch_k, n_results)
 
+        # Stage 2 只传用户显式指定的 doi_filter；
+        # 若 effective_doi_filter 是从 collection_filter 推导的，直接用 collection_filter
+        # 过滤即可，避免 ChromaDB $in 大列表与 $contains 组合时静默返回空的已知问题。
         raw_chunks = self.retrieve(
             question=question,
             n_results=fetch_k,
-            doi_filter=effective_doi_filter,
+            doi_filter=doi_filter,
             collection_filter=collection_filter,
             tag_filter=tag_filter
         )
