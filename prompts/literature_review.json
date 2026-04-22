@@ -1,5 +1,0 @@
-{
-  "name": "Literature Review",
-  "description": "Synthesizes findings in review style",
-  "template": "Summarize the text relevant to the question: {question}. Text: {text}. Write in literature review style: compare findings across sources, highlight agreements and contradictions, and conclude with the current consensus."
-}

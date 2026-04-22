@@ -52,7 +52,7 @@ class LLMSettings(BaseModel):
     api_key: str = ""
     api_base: str = ""
     multimodal: int = 0
-    evidence_k: int = 10
+    evidence_k: int = 50
     max_sources: int = 5
     prompt_template: str = ""
 
@@ -99,23 +99,29 @@ async def query_paperqa(question: str, paper_dir: str,
                 
                 context_str += f"[{i}] ({', '.join(header_parts)})\n{c.text}\n\n"
             
-            prompt = f"""Answer the question based on the provided context from scientific papers.
-For every factual claim, cite the source using [n] notation where n is the chunk number.
-If context is insufficient, say so.
+            system_msg = """You are a rigorous scientific literature analyst. Rules you MUST follow:
+1. Answer in the same language as the question.
+2. Every single sentence with a factual claim MUST end with a citation like [n]. No exceptions.
+3. Citation format: [n] for single, [n][m] for multiple. NEVER use [n, m] or [n,m].
+4. Do NOT write any concluding summary paragraph — end after your last cited point.
+5. Only use information from the provided context. Do not hallucinate."""
 
-Context:
+            user_msg = f"""Context (scientific paper chunks):
 {context_str}
 
 Question: {question}
 
-Answer:"""
-            
+Answer (cite every claim with [n], no uncited summary at the end):"""
+
             try:
                 response = await litellm.acompletion(
                     model=target_llm,
                     api_key=llm_settings.api_key if llm_settings and llm_settings.api_key else None,
                     api_base=llm_settings.api_base if llm_settings and llm_settings.api_base else None,
-                    messages=[{"role": "user", "content": prompt}]
+                    messages=[
+                        {"role": "system", "content": system_msg},
+                        {"role": "user", "content": user_msg}
+                    ]
                 )
                 answer_text = response.choices[0].message.content
                 
@@ -130,7 +136,7 @@ Answer:"""
                         "chunk_id": entry.chunk_id,
                         "doc_id": entry.doc_id,
                         "snippet": entry.snippet,
-                        "rcs_score": 0.0,
+                        "rcs_score": entry.rcs_score,
                         "metadata": entry.metadata,
                     })
 
@@ -140,6 +146,7 @@ Answer:"""
                     "structural_check": {
                         "passed": structural.passed,
                         "issues": structural.issues,
+                        "uncited_sentences": structural.uncited_sentences,
                         "cited_indices": structural.cited_indices,
                     },
                     "retrieval_source": "chromadb"
@@ -302,6 +309,35 @@ Answer:"""
             "cited_indices": structural.cited_indices,
         },
     }
+
+@app.post("/admin/test-llm")
+async def test_llm_endpoint(settings: LLMSettings):
+    """测试 LLM 配置是否能正常连接。"""
+    try:
+        # 构造极简测试 Prompt
+        messages = [{"role": "user", "content": "ping"}]
+        
+        # 临时处理 API Key 环境（参考 query_paperqa 逻辑）
+        target_model = settings.llm
+        api_key = settings.api_key if settings.api_key else None
+        api_base = settings.api_base if settings.api_base else None
+        
+        # 发起请求，设置较短的超时和极小的 token 消耗
+        response = await asyncio.wait_for(
+            litellm.acompletion(
+                model=target_model,
+                messages=messages,
+                api_key=api_key,
+                api_base=api_base,
+                max_tokens=5
+            ),
+            timeout=10.0
+        )
+        return {"status": "success", "content": response.choices[0].message.content}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": str(e)}
 
 @app.get("/", response_class=HTMLResponse)
 async def read_index():

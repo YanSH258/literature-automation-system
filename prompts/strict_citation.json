@@ -1,5 +1,0 @@
-{
-  "name": "Strict Citation",
-  "description": "Forces every claim to have a citation marker",
-  "template": "Summarize the text relevant to the question: {question}. Text: {text}. You MUST end every factual sentence with a citation marker [n]. Do not include any uncited claims."
-}
