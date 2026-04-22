@@ -511,8 +511,14 @@
             try {
                 const res = await fetch('/admin/test-llm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ llm: settingModel.value, api_key: settingKey.value.trim(), api_base: settingBase.value.trim() }) });
                 const result = await res.json();
-                testStatus.textContent = result.status === 'success' ? 'Connection OK' : 'Error: ' + result.message;
-                testStatus.className = `text-[10px] text-center p-2 rounded ${result.status === 'success' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`;
+                if (result.status === 'success') {
+                    applySettingsBtn.click();
+                    testStatus.textContent = 'Connection OK — settings saved';
+                    testStatus.className = 'text-[10px] text-center p-2 rounded bg-emerald-50 text-emerald-600';
+                } else {
+                    testStatus.textContent = 'Error: ' + result.message;
+                    testStatus.className = 'text-[10px] text-center p-2 rounded bg-red-50 text-red-600';
+                }
             } catch (e) { testStatus.textContent = 'Failed: ' + e.message; }
             finally { testLlmBtn.disabled = false; }
         };

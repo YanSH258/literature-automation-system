@@ -493,6 +493,8 @@ async def ask_endpoint(payload: AskRequest):
             payload.llm_settings,
             payload.conversation_history,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()
