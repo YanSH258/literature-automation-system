@@ -86,80 +86,84 @@ async def query_paperqa(question: str, paper_dir: str,
             chunks_per_paper=llm_settings.chunks_per_paper if llm_settings else 4
         )
         
-        if chunks:
-            # 构造 Prompt 让 LLM 直接基于 chunks 回答
-            target_llm = llm_settings.llm if llm_settings else "deepseek/deepseek-chat"
-            
-            context_str = ""
-            for i, c in enumerate(chunks, start=1):
-                meta = c.metadata
-                authors = meta.get('creators', '')
-                pub = meta.get('publication', '')
-                year = meta.get('year', '')
-                header_parts = [f"doi: {meta.get('doi')}"]
-                if authors: header_parts.append(f"authors: {authors}")
-                if pub: header_parts.append(f"journal: {pub}")
-                if year: header_parts.append(f"year: {year[:4]}")
-                
-                context_str += f"[{i}] ({', '.join(header_parts)})\n{c.text}\n\n"
-            
-            system_msg = """You are a rigorous scientific literature analyst. Rules you MUST follow:
+        if not chunks:
+            return {
+                "answer": "未找到与该问题相关的文献片段。请确认所选分类下的文献已完成索引，或尝试更换问题。",
+                "citations": [],
+                "structural_check": {"passed": True, "issues": [], "uncited_sentences": [], "cited_indices": []},
+                "retrieval_source": "chromadb",
+                "retrieval_info": stage_info
+            }
+
+        # 构造 Prompt 让 LLM 直接基于 chunks 回答
+        target_llm = llm_settings.llm if llm_settings else "deepseek/deepseek-chat"
+
+        context_str = ""
+        for i, c in enumerate(chunks, start=1):
+            meta = c.metadata
+            authors = meta.get('creators', '')
+            pub = meta.get('publication', '')
+            year = meta.get('year', '')
+            header_parts = [f"doi: {meta.get('doi')}"]
+            if authors: header_parts.append(f"authors: {authors}")
+            if pub: header_parts.append(f"journal: {pub}")
+            if year: header_parts.append(f"year: {year[:4]}")
+            context_str += f"[{i}] ({', '.join(header_parts)})\n{c.text}\n\n"
+
+        system_msg = """You are a rigorous scientific literature analyst. Rules you MUST follow:
 1. Answer in the same language as the question.
 2. Every single sentence with a factual claim MUST end with a citation like [n]. No exceptions.
 3. Citation format: [n] for single, [n][m] for multiple. NEVER use [n, m] or [n,m].
 4. Do NOT write any concluding summary paragraph — end after your last cited point.
 5. Only use information from the provided context. Do not hallucinate."""
 
-            user_msg = f"""Context (scientific paper chunks):
+        user_msg = f"""Context (scientific paper chunks):
 {context_str}
 
 Question: {question}
 
 Answer (cite every claim with [n], no uncited summary at the end):"""
 
-            messages = [{"role": "system", "content": system_msg}]
-            if conversation_history:
-                messages.extend(conversation_history)
-            messages.append({"role": "user", "content": user_msg})
+        messages = [{"role": "system", "content": system_msg}]
+        if conversation_history:
+            messages.extend(conversation_history)
+        messages.append({"role": "user", "content": user_msg})
 
-            try:
-                response = await litellm.acompletion(
-                    model=target_llm,
-                    api_key=llm_settings.api_key if llm_settings and llm_settings.api_key else None,
-                    api_base=llm_settings.api_base if llm_settings and llm_settings.api_base else None,
-                    messages=messages
-                )
-                answer_text = response.choices[0].message.content
-                
-                session_id = str(uuid.uuid4())
-                cmap = build_citation_map(chunks, session_id=session_id, turn_id=1)
-                structural = structural_check(answer_text, max_index=len(chunks))
-                
-                citations_out = []
-                for idx, entry in cmap.entries.items():
-                    citations_out.append({
-                        "display_index": entry.display_index,
-                        "chunk_id": entry.chunk_id,
-                        "doc_id": entry.doc_id,
-                        "snippet": entry.snippet,
-                        "rcs_score": entry.rcs_score,
-                        "metadata": entry.metadata,
-                    })
+        response = await litellm.acompletion(
+            model=target_llm,
+            api_key=llm_settings.api_key if llm_settings and llm_settings.api_key else None,
+            api_base=llm_settings.api_base if llm_settings and llm_settings.api_base else None,
+            messages=messages
+        )
+        answer_text = response.choices[0].message.content
 
-                return {
-                    "answer": answer_text,
-                    "citations": citations_out,
-                    "structural_check": {
-                        "passed": structural.passed,
-                        "issues": structural.issues,
-                        "uncited_sentences": structural.uncited_sentences,
-                        "cited_indices": structural.cited_indices,
-                    },
-                    "retrieval_source": "chromadb",
-                    "retrieval_info": stage_info
-                }
-            except Exception as e:
-                print(f"ChromaDB workflow failed, falling back to PaperQA2: {e}")
+        session_id = str(uuid.uuid4())
+        cmap = build_citation_map(chunks, session_id=session_id, turn_id=1)
+        structural = structural_check(answer_text, max_index=len(chunks))
+
+        citations_out = []
+        for idx, entry in cmap.entries.items():
+            citations_out.append({
+                "display_index": entry.display_index,
+                "chunk_id": entry.chunk_id,
+                "doc_id": entry.doc_id,
+                "snippet": entry.snippet,
+                "rcs_score": entry.rcs_score,
+                "metadata": entry.metadata,
+            })
+
+        return {
+            "answer": answer_text,
+            "citations": citations_out,
+            "structural_check": {
+                "passed": structural.passed,
+                "issues": structural.issues,
+                "uncited_sentences": structural.uncited_sentences,
+                "cited_indices": structural.cited_indices,
+            },
+            "retrieval_source": "chromadb",
+            "retrieval_info": stage_info
+        }
 
     # --- Fallback: 原始 PaperQA2 流程 ---
     # 1. 环境与路径准备
@@ -474,12 +478,13 @@ async def list_tags():
 async def ask_endpoint(payload: AskRequest):
     try:
         return await query_paperqa(
-            payload.question, 
-            payload.paper_dir, 
-            payload.dois, 
+            payload.question,
+            payload.paper_dir,
+            payload.dois,
             payload.collection_filter,
             payload.tag_filter,
-            payload.llm_settings
+            payload.llm_settings,
+            payload.conversation_history,
         )
     except Exception as e:
         import traceback
