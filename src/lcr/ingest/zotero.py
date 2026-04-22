@@ -38,15 +38,6 @@ FROM collectionItems ci
 JOIN collections c ON ci.collectionID = c.collectionID
 """
 
-ATTACHMENT_QUERY = """
-SELECT ci.key AS att_key, ia.path, ia.contentType
-FROM items ci
-JOIN itemAttachments ia ON ci.itemID = ia.itemID
-WHERE ia.parentItemID = ?
-  AND (ia.contentType = 'application/pdf' OR ia.path LIKE '%.pdf')
-LIMIT 1
-"""
-
 COLLECTION_QUERY = """
 SELECT c.collectionID, c.collectionName, c.parentCollectionID
 FROM collections c
@@ -173,13 +164,25 @@ class ZoteroIngestor:
             # 3. 预加载所有 DOI 对应的 PDF 路径
             cursor.execute(DOI_QUERY)
             doi_rows = cursor.fetchall()
+
+            # 一次性取出所有附件（替代 N+1 的 per-item query）
+            cursor.execute("""
+                SELECT ia.parentItemID, ci.key AS att_key, ia.path
+                FROM items ci
+                JOIN itemAttachments ia ON ci.itemID = ia.itemID
+                WHERE (ia.contentType = 'application/pdf' OR ia.path LIKE '%.pdf')
+            """)
+            att_map: dict = {}
+            for parent_id, att_key, path in cursor.fetchall():
+                if parent_id not in att_map:
+                    att_map[parent_id] = (att_key, path)
+
             item_pdf_map = {}
             for item_id, item_key, doi in doi_rows:
-                cursor.execute(ATTACHMENT_QUERY, (item_id,))
-                att_row = cursor.fetchone()
                 pdf_path = None
+                att_row = att_map.get(item_id)
                 if att_row:
-                    att_key, path, _ = att_row
+                    att_key, path = att_row
                     if path:
                         if path.startswith("storage:"):
                             filename = path.replace("storage:", "")
@@ -272,12 +275,23 @@ class ZoteroIngestor:
             cursor.execute(DOI_QUERY)
             doi_rows = cursor.fetchall()
             
+            # 一次性取出所有附件（替代 N+1 的 per-item query）
+            cursor.execute("""
+                SELECT ia.parentItemID, ci.key AS att_key, ia.path
+                FROM items ci
+                JOIN itemAttachments ia ON ci.itemID = ia.itemID
+                WHERE (ia.contentType = 'application/pdf' OR ia.path LIKE '%.pdf')
+            """)
+            att_map: dict = {}
+            for parent_id, att_key, path in cursor.fetchall():
+                if parent_id not in att_map:
+                    att_map[parent_id] = (att_key, path)
+
             for item_id, item_key, doi in doi_rows:
-                cursor.execute(ATTACHMENT_QUERY, (item_id,))
-                att_row = cursor.fetchone()
                 pdf_path = None
+                att_row = att_map.get(item_id)
                 if att_row:
-                    att_key, path, _ = att_row
+                    att_key, path = att_row
                     if path:
                         if path.startswith("storage:"):
                             filename = path.replace("storage:", "")

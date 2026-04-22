@@ -189,7 +189,15 @@ class ChromaRetriever:
                 ))
         return chunks
 
+_retriever_instance: ChromaRetriever | None = None
+
+def _get_retriever() -> ChromaRetriever:
+    global _retriever_instance
+    if _retriever_instance is None:
+        _retriever_instance = ChromaRetriever()
+    return _retriever_instance
+
 def retrieve_chunks(question, **kwargs) -> List[LCRChunk]:
     if not CHROMA_DIR.exists():
         return []
-    return ChromaRetriever().retrieve_two_stage(question, **kwargs)
+    return _get_retriever().retrieve_two_stage(question, **kwargs)
