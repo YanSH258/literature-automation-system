@@ -54,6 +54,7 @@ class LLMSettings(BaseModel):
     multimodal: int = 0
     evidence_k: int = 50
     max_sources: int = 5
+    chunks_per_paper: int = 4
     prompt_template: str = ""
 
 class AskRequest(BaseModel):

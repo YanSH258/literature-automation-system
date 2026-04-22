@@ -170,8 +170,8 @@
         };
 
         // --- State ---
-        let llmSettings = JSON.parse(localStorage.getItem('lcr_settings')) || { 
-            llm: "deepseek/deepseek-chat", api_key: "", api_base: "", evidence_k: 50, max_sources: 15, prompt_template: "" 
+        let llmSettings = JSON.parse(localStorage.getItem('lcr_settings')) || {
+            llm: "deepseek/deepseek-chat", api_key: "", api_base: "", evidence_k: 100, max_sources: 15, chunks_per_paper: 4, prompt_template: ""
         };
         let conversations = JSON.parse(localStorage.getItem('lcr_conversations')) || [];
         let currentConvId = null;
@@ -224,7 +224,8 @@
                 api_key: settingKey.value.trim(), 
                 api_base: settingBase.value.trim(),
                 evidence_k: parseInt(settingK.value),
-                max_sources: parseInt(settingSources.value)
+                max_sources: parseInt(settingSources.value),
+                chunks_per_paper: parseInt(document.getElementById('setting-chunks-per-paper').value)
             };
             localStorage.setItem('lcr_settings', JSON.stringify(llmSettings));
             closeDrawer();
