@@ -47,8 +47,8 @@ PROMPTS_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 class LLMSettings(BaseModel):
-    llm: str = "deepseek/deepseek-chat"
-    summary_llm: str = ""  # 留空时与 llm 相同，用于 RCS 打分的便宜模型
+    llm: str = os.getenv("LCR_LLM", "deepseek/deepseek-chat")
+    summary_llm: str = os.getenv("LCR_SUMMARY_LLM", "") 
     api_key: str = ""
     api_base: str = ""
     multimodal: int = 0
@@ -96,7 +96,7 @@ async def query_paperqa(question: str, paper_dir: str,
             }
 
         # 构造 Prompt 让 LLM 直接基于 chunks 回答
-        target_llm = llm_settings.llm if llm_settings else "deepseek/deepseek-chat"
+        target_llm = llm_settings.llm if llm_settings else os.getenv("LCR_LLM", "deepseek/deepseek-chat")
 
         context_str = ""
         for i, c in enumerate(chunks, start=1):
@@ -197,22 +197,24 @@ Answer (cite every claim with [n], no uncited summary at the end):"""
         paper_dir = str(cache_dir)
 
     # 2. 模型与 API 配置
-    target_llm = "deepseek/deepseek-chat"
+    target_llm = os.getenv("LCR_LLM", "deepseek/deepseek-chat")
     if llm_settings:
         target_llm = llm_settings.llm
         if llm_settings.api_key:
             if "deepseek" in target_llm.lower(): os.environ["DEEPSEEK_API_KEY"] = llm_settings.api_key
             elif "claude" in target_llm.lower() or "anthropic" in target_llm.lower(): os.environ["ANTHROPIC_API_KEY"] = llm_settings.api_key
             elif "minimax" in target_llm.lower():
-                os.environ["OPENAI_API_KEY"] = llm_settings.api_key
+                os.environ["MINIMAX_API_KEY"] = llm_settings.api_key
+                if llm_settings.api_base:
+                    os.environ["MINIMAX_API_BASE"] = llm_settings.api_base
             elif "moonshot" in target_llm.lower() or "kimi" in target_llm.lower():
                 os.environ["MOONSHOT_API_KEY"] = llm_settings.api_key
-                os.environ["OPENAI_API_KEY"] = llm_settings.api_key  # kimi-k2.x 使用 openai/ 前缀路由时需要
             elif "gemini" in target_llm.lower(): os.environ["GEMINI_API_KEY"] = llm_settings.api_key
             else: os.environ["OPENAI_API_KEY"] = llm_settings.api_key
         
         # 全局设置 litellm.api_base 以便支持自定义服务商
-        litellm.api_base = llm_settings.api_base if llm_settings.api_base else None
+        if llm_settings.api_base:
+            litellm.api_base = llm_settings.api_base
 
     target_summary_llm = (llm_settings.summary_llm.strip()
                           if llm_settings and llm_settings.summary_llm.strip()
