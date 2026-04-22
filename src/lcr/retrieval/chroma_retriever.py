@@ -41,17 +41,26 @@ class ChromaRetriever:
         zotero_metas = {}
 
         # 如果指定了 collection_filter 且没有显式 doi_filter，
-        # 直接从索引库取该 collection 的全部 DOI，跳过 zotero 摘要搜索
+        # 用 SQLite LIKE 查找属于该 collection 的 DOI。
+        # 注意：ChromaDB 1.5.x 的 $contains 算子已失效（总返回空），
+        # 必须绕过 SDK 直接查 SQLite。
         if not effective_doi_filter and collection_filter:
             try:
-                col_results = self.collection.get(
-                    where={"collection_paths": {"$contains": collection_filter}},
-                    include=["metadatas"]
-                )
-                if col_results and col_results["metadatas"]:
-                    doi_set = {m["doi"] for m in col_results["metadatas"] if m.get("doi")}
-                    if doi_set:
-                        effective_doi_filter = list(doi_set)
+                import sqlite3 as _sqlite3
+                _db = Path(str(self.client.get_settings().persist_directory)).resolve() / "chroma.sqlite3"
+                _conn = _sqlite3.connect(f"file:{_db}?mode=ro", uri=True)
+                _rows = _conn.execute("""
+                    SELECT DISTINCT em_doi.string_value
+                    FROM embedding_metadata em_cp
+                    JOIN embedding_metadata em_doi ON em_doi.id = em_cp.id
+                    WHERE em_cp.key = 'collection_paths'
+                      AND em_cp.string_value LIKE ?
+                      AND em_doi.key = 'doi'
+                """, (f"%{collection_filter}%",)).fetchall()
+                _conn.close()
+                doi_set = {r[0] for r in _rows if r[0]}
+                if doi_set:
+                    effective_doi_filter = list(doi_set)
             except Exception as e:
                 print(f"Warning: collection pre-filter failed: {e}")
 
@@ -106,14 +115,13 @@ class ChromaRetriever:
         fetch_k = len(effective_doi_filter) * chunks_per_paper * 2 if effective_doi_filter else n_results * 5
         fetch_k = max(fetch_k, n_results)
 
-        # Stage 2 只传用户显式指定的 doi_filter；
-        # 若 effective_doi_filter 是从 collection_filter 推导的，直接用 collection_filter
-        # 过滤即可，避免 ChromaDB $in 大列表与 $contains 组合时静默返回空的已知问题。
+        # Stage 2：用 effective_doi_filter（来自 SQLite 或用户显式传入）做 $in 检索。
+        # 不再传 collection_filter，因为 ChromaDB 1.5.x $contains 算子已失效。
         raw_chunks = self.retrieve(
             question=question,
             n_results=fetch_k,
-            doi_filter=doi_filter,
-            collection_filter=collection_filter,
+            doi_filter=effective_doi_filter,
+            collection_filter=None,
             tag_filter=tag_filter
         )
 
