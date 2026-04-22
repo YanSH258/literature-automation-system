@@ -1,3 +1,4 @@
+import math
 import chromadb
 from pathlib import Path
 from typing import List, Optional
@@ -28,7 +29,6 @@ class ChromaRetriever:
         doi_filter: Optional[List[str]] = None,
         collection_filter: Optional[str] = None,
         tag_filter: Optional[List[str]] = None,
-        zotero_prefilter_k: int = 30,
         chunks_per_paper: int = 4,
     ) -> tuple[List[LCRChunk], dict]:
         """
@@ -39,6 +39,8 @@ class ChromaRetriever:
         """
         effective_doi_filter = doi_filter
         zotero_metas = {}
+        # Stage 1 选纸数自动推导：保证有足够候选，×2 作缓冲
+        zotero_prefilter_k = max(20, math.ceil(n_results / chunks_per_paper) * 2)
 
         # 第一阶段
         if not effective_doi_filter and self._zotero_client:
@@ -218,6 +220,3 @@ def retrieve_chunks(question, **kwargs) -> tuple[List[LCRChunk], dict]:
     if not CHROMA_DIR.exists():
         return [], {}
     return _get_retriever().retrieve_two_stage(question, **kwargs)
-
-age(question, **kwargs)
-
