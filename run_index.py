@@ -57,7 +57,7 @@ def backfill_metadata():
     log.info(f"Loaded {len(z_meta)} records from zotero-mcp.")
 
     # 2. 直接查 SQLite 获取全部 chunk ID（避免 collection.get() 全量挂死）
-    lcr_sqlite = Path.home() / ".cache" / "lcr" / "chroma" / "chroma.sqlite3"
+    lcr_sqlite = PROJ_ROOT / "data" / "chroma" / "chroma.sqlite3"
     conn = sqlite3.connect(f"file:{lcr_sqlite}?mode=ro", uri=True)
     rows = conn.execute("""
         SELECT e.embedding_id
@@ -71,7 +71,7 @@ def backfill_metadata():
     log.info(f"Total chunks to scan: {len(all_ids)}")
 
     # 3. 用 ChromaDB SDK 分批读取 metadata + 更新
-    lcr_client = chromadb.PersistentClient(path=str(Path.home() / ".cache" / "lcr" / "chroma"))
+    lcr_client = chromadb.PersistentClient(path=str(PROJ_ROOT / "data" / "chroma"))
     collection = lcr_client.get_collection("lcr_papers")
 
     batch_size = 500
