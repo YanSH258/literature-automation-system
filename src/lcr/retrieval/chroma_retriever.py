@@ -1,5 +1,5 @@
-import math
 import chromadb
+import math
 from pathlib import Path
 from typing import List, Optional
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
@@ -39,7 +39,23 @@ class ChromaRetriever:
         """
         effective_doi_filter = doi_filter
         zotero_metas = {}
-        # Stage 1 选纸数自动推导：保证有足够候选，×2 作缓冲
+
+        # 如果指定了 collection_filter 且没有显式 doi_filter，
+        # 直接从索引库取该 collection 的全部 DOI，跳过 zotero 摘要搜索
+        if not effective_doi_filter and collection_filter:
+            try:
+                col_results = self.collection.get(
+                    where={"collection_paths": {"$contains": collection_filter}},
+                    include=["metadatas"]
+                )
+                if col_results and col_results["metadatas"]:
+                    doi_set = {m["doi"] for m in col_results["metadatas"] if m.get("doi")}
+                    if doi_set:
+                        effective_doi_filter = list(doi_set)
+            except Exception as e:
+                print(f"Warning: collection pre-filter failed: {e}")
+
+        # Stage 1 选纸数自动推导：目标是有足够候选纸，×2 作为缓冲
         zotero_prefilter_k = max(20, math.ceil(n_results / chunks_per_paper) * 2)
 
         # 第一阶段
@@ -121,10 +137,11 @@ class ChromaRetriever:
 
         stage_info = {
             "stage1_screened": zotero_prefilter_k,   # Stage 1 目标选纸数
-            "stage1_found": len(zotero_metas),        # Stage 1 实际找到的纸数
+            "stage1_found": len(zotero_metas) if zotero_metas else len(effective_doi_filter or []),
             "stage2_raw_chunks": len(raw_chunks),
             "final_chunks": len(chunks),
             "chunks_per_paper": chunks_per_paper,
+            "scope": collection_filter or "global",
             "used_doi_filter": doi_filter is not None,
         }
         return chunks, stage_info

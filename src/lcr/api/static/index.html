@@ -349,11 +349,11 @@
 
             let badge = '';
             if (source === 'chromadb' && retrieval_info) {
-                const col = retrieval_info.collection_filter;
-                const colTag = col ? ` · 📁 ${col}` : '';
+                const ri = retrieval_info;
+                const scope = ri.scope && ri.scope !== 'global' ? ` · 📁 ${ri.scope}` : '';
                 badge = `<div class="flex items-center mb-3">
                     <span class="text-[9px] bg-emerald-50 text-emerald-600 border border-emerald-200 px-2 py-0.5 rounded-full font-mono flex items-center">
-                        <i class="fas fa-bolt mr-1"></i>ChromaDB · Stage1: ${retrieval_info.stage1_found} papers → ${retrieval_info.final_chunks} chunks${colTag}
+                        <i class="fas fa-bolt mr-1"></i>Stage1: ${ri.stage1_found} papers${scope} → Stage2: ${ri.final_chunks} chunks
                     </span></div>`;
             } else if (source === 'paperqa') {
                 badge = `<div class="flex items-center mb-3">
@@ -362,30 +362,29 @@
                     </span></div>`;
             }
 
-            const cited = citedIndices.length > 0
-                ? citations.filter(c => citedIndices.includes(c.display_index))
-                : citations;
-            const uncited = citedIndices.length > 0
-                ? citations.filter(c => !citedIndices.includes(c.display_index))
-                : [];
+            const cited = citations.filter(c => citedIndices.includes(c.display_index));
+            const uncited = citations.filter(c => !citedIndices.includes(c.display_index));
 
             const citedHtml = cited.map(renderCitationCard).join('');
-            const uncitedSection = uncited.length > 0 ? `
-                <details class="mt-3">
-                    <summary class="text-[9px] text-slate-400 cursor-pointer hover:text-slate-500 select-none py-1">
-                        ${uncited.length} more retrieved but not cited
+            const uncitedHtml = uncited.length > 0 ? `
+                <details class="mt-4">
+                    <summary class="text-[10px] text-slate-400 cursor-pointer hover:text-slate-600 select-none list-none flex items-center">
+                        <i class="fas fa-plus-circle mr-1 opacity-50"></i> Show all retrieved chunks (${uncited.length} not cited in answer)
                     </summary>
-                    <div class="mt-2 space-y-2 opacity-50">${uncited.map(renderCitationCard).join('')}</div>
+                    <div class="mt-3 space-y-3 opacity-60 scale-95 origin-top transition-all">
+                        ${uncited.map(renderCitationCard).join('')}
+                    </div>
                 </details>` : '';
 
             const citationsSection = citations.length > 0 ? `
                 <div class="mt-6 pt-6 border-t border-slate-50">
-                    <button class="toggle-citations flex items-center text-xs font-black text-slate-400 uppercase tracking-widest hover:text-blue-600 transition">
-                        <i class="fas fa-chevron-right mr-2 text-[8px] transition-transform"></i>
+                    <div class="flex items-center text-xs font-black text-slate-400 uppercase tracking-widest mb-4">
+                        <i class="fas fa-list-ol mr-2 text-blue-500/50"></i>
                         Referenced Studies (${cited.length} cited · ${citations.length} retrieved)
-                    </button>
-                    <div class="citations-wrapper hidden mt-4 space-y-2">
-                        ${citedHtml}${uncitedSection}
+                    </div>
+                    <div class="citations-thread">
+                        ${citedHtml}
+                        ${uncitedHtml}
                     </div>
                 </div>` : '';
 
@@ -397,15 +396,6 @@
                 </div>`;
 
             chatThread.appendChild(msg);
-            const toggle = msg.querySelector('.toggle-citations');
-            if (toggle) {
-                toggle.onclick = () => {
-                    const wrapper = msg.querySelector('.citations-wrapper');
-                    const icon = toggle.querySelector('i');
-                    wrapper.classList.toggle('hidden');
-                    icon.style.transform = wrapper.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(90deg)';
-                };
-            }
         }
 
         // --- Execute Ask ---
