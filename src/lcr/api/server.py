@@ -203,6 +203,8 @@ Answer (cite every claim with [n], no uncited summary at the end):"""
         if llm_settings.api_key:
             if "deepseek" in target_llm.lower(): os.environ["DEEPSEEK_API_KEY"] = llm_settings.api_key
             elif "claude" in target_llm.lower() or "anthropic" in target_llm.lower(): os.environ["ANTHROPIC_API_KEY"] = llm_settings.api_key
+            elif "minimax" in target_llm.lower():
+                os.environ["OPENAI_API_KEY"] = llm_settings.api_key
             elif "moonshot" in target_llm.lower() or "kimi" in target_llm.lower():
                 os.environ["MOONSHOT_API_KEY"] = llm_settings.api_key
                 os.environ["OPENAI_API_KEY"] = llm_settings.api_key  # kimi-k2.x 使用 openai/ 前缀路由时需要
