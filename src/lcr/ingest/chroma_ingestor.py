@@ -6,8 +6,7 @@ from pypdf import PdfReader
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from lcr.ingest.zotero import ZoteroRecord
 
-CACHE_DIR = Path.home() / ".cache" / "lcr"
-CHROMA_DIR = CACHE_DIR / "chroma"
+CHROMA_DIR = Path(__file__).resolve().parents[3] / "data" / "chroma"
 EMBED_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 class ChromaIngestor:
@@ -88,7 +87,7 @@ class ChromaIngestor:
             return
 
         # 1. 检查是否已存在（增量索引）
-        existing = self.collection.get(where={"doi": record.doi})
+        existing = self.collection.get(where={"doi": record.doi.lower().strip()})
         if existing and existing["ids"]:
             return # Skip
 
@@ -99,12 +98,12 @@ class ChromaIngestor:
             return
 
         # 3. 准备元数据
-        doi_safe = record.doi.replace("/", "_")
+        doi_safe = record.doi.lower().strip().replace("/", "_")
         z_meta = self._zotero_meta.get(record.doi.lower().strip(), {})
         
         ids = [f"{doi_safe}#{i:04d}" for i in range(len(chunks))]
         metadatas = [{
-            "doi": record.doi,
+            "doi": record.doi.lower().strip(),
             "title": record.title or "Unknown",
             "year": str(record.year or "N/A"),
             "collection_paths": "|".join(record.collection_paths),

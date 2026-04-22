@@ -4,8 +4,7 @@ from typing import List, Optional
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from lcr.types import LCRChunk
 
-CACHE_DIR = Path.home() / ".cache" / "lcr"
-CHROMA_DIR = CACHE_DIR / "chroma"
+CHROMA_DIR = Path(__file__).resolve().parents[3] / "data" / "chroma"
 EMBED_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 class ChromaRetriever:
@@ -29,56 +28,77 @@ class ChromaRetriever:
         doi_filter: Optional[List[str]] = None,
         collection_filter: Optional[str] = None,
         tag_filter: Optional[List[str]] = None,
-        zotero_prefilter_k: int = 50,
+        zotero_prefilter_k: int = 1000,
     ) -> List[LCRChunk]:
         """
         两阶段检索：
         1. 第一阶段：从 zotero-mcp 检索 Top-K 摘要，提取 DOI。
         2. 第二阶段：在 LCR 正文库中，限定在上述 DOI 范围内进行全文检索。
+           每篇论文只保留最相关的 1 个 chunk，确保来源多样性。
         """
         effective_doi_filter = doi_filter
-        zotero_metas = {} # 用于补全元数据
+        zotero_metas = {}
 
-        # 第一阶段：如果未显式指定 DOI 过滤，且 zotero-mcp 可用
+        # 第一阶段
         if not effective_doi_filter and self._zotero_client:
             try:
-                # 方案：不直接 query_texts，而是先对 question 做 embedding，然后用 query_embeddings
                 z_coll = self._zotero_client.get_collection(name="zotero_library")
                 q_embeds = self.embedding_fn([question])
-                
                 z_res = z_coll.query(
                     query_embeddings=q_embeds,
                     n_results=zotero_prefilter_k,
                     include=["metadatas"]
                 )
-                
                 if z_res and z_res["metadatas"]:
-                    found_dois = []
                     for m in z_res["metadatas"][0]:
                         doi = m.get("doi")
                         if doi:
                             doi_clean = doi.lower().strip()
-                            found_dois.append(doi_clean)
                             zotero_metas[doi_clean] = {
                                 "creators": m.get("creators", ""),
                                 "publication": m.get("publication", ""),
                                 "citation_key": m.get("citation_key", "")
                             }
-                    if found_dois:
-                        effective_doi_filter = list(set(found_dois))
+                    if zotero_metas:
+                        effective_doi_filter = list(zotero_metas.keys())
             except Exception as e:
-                import traceback
-                # traceback.print_exc()
                 print(f"Warning: Zotero-mcp pre-filter failed: {e}")
 
-        # 第二阶段：执行常规检索
-        chunks = self.retrieve(
+        # 如果用户传了显式 doi_filter，但 zotero_metas 为空，尝试补充加载
+        if doi_filter and not zotero_metas and self._zotero_client:
+            try:
+                z_coll = self._zotero_client.get_collection(name="zotero_library")
+                all_meta = z_coll.get(include=["metadatas"])
+                if all_meta and all_meta["metadatas"]:
+                    doi_set = {d.lower().strip() for d in doi_filter}
+                    for m in all_meta["metadatas"]:
+                        doi = m.get("doi")
+                        if doi and doi.lower().strip() in doi_set:
+                            zotero_metas[doi.lower().strip()] = {
+                                "creators": m.get("creators", ""),
+                                "publication": m.get("publication", ""),
+                                "citation_key": m.get("citation_key", "")
+                            }
+            except Exception as e:
+                print(f"Warning: Failed to load zotero meta for doi_filter: {e}")
+
+        # 第二阶段：多取候选 chunk，再按论文去重，保证来源多样性
+        fetch_k = n_results * 5  # 多取 5 倍候选
+        raw_chunks = self.retrieve(
             question=question,
-            n_results=n_results,
+            n_results=fetch_k,
             doi_filter=effective_doi_filter,
             collection_filter=collection_filter,
             tag_filter=tag_filter
         )
+
+        # 每篇论文只保留语义最相关的 1 个 chunk（Chroma 已按相关度排序，first = best）
+        seen_dois: dict = {}
+        for c in raw_chunks:
+            doi = c.doc_id
+            if doi not in seen_dois:
+                seen_dois[doi] = c
+        chunks = list(seen_dois.values())[:n_results]
 
         # 补全元数据
         for c in chunks:
@@ -135,15 +155,20 @@ class ChromaRetriever:
         results = self.collection.query(
             query_texts=[question],
             n_results=n_results,
-            where=where
+            where=where,
+            include=["documents", "metadatas", "distances"]
         )
 
         # 转换为 LCRChunk
         chunks = []
         if results["documents"]:
+            distances = results["distances"][0] if results.get("distances") else []
             for i, (text, meta) in enumerate(zip(results["documents"][0], results["metadatas"][0]), start=1):
+                # cosine distance → 0-10 relevance score (distance=0 最相关)
+                dist = distances[i - 1] if i - 1 < len(distances) else 1.0
+                rcs = round(max(0.0, (1.0 - dist) * 10), 2)
                 chunks.append(LCRChunk(
-                    chunk_id=f"{meta['doi']}#{meta['chunk_seq']:04d}",
+                    chunk_id=f"{meta['doi']}#{int(meta['chunk_seq']):04d}",
                     doc_id=meta["doi"],
                     text=text,
                     section="Body",
@@ -160,7 +185,7 @@ class ChromaRetriever:
                         "publication": meta.get("publication", ""),
                         "citation_key": meta.get("citation_key", "")
                     },
-                    rcs_score=0.0 # Placeholder
+                    rcs_score=rcs
                 ))
         return chunks
 
