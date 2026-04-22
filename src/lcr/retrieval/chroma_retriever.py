@@ -188,6 +188,12 @@ class ChromaRetriever:
             where = {"$and": where_clauses}
 
         # 执行检索
+        try:
+            total = self.collection.count()
+            n_results = min(n_results, max(1, total))
+        except Exception:
+            pass
+
         results = self.collection.query(
             query_texts=[question],
             n_results=n_results,
