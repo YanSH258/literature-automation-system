@@ -63,18 +63,20 @@ class AskRequest(BaseModel):
     collection_filter: Optional[str] = None
     tag_filter: Optional[List[str]] = None
     llm_settings: Optional[LLMSettings] = None
+    conversation_history: Optional[List[dict]] = None  # [{role: "user"/"assistant", content: "..."}]
 
 async def query_paperqa(question: str, paper_dir: str, 
                         dois: Optional[List[str]] = None, 
                         collection_filter: Optional[str] = None,
                         tag_filter: Optional[List[str]] = None,
-                        llm_settings: Optional[LLMSettings] = None) -> dict:
+                        llm_settings: Optional[LLMSettings] = None,
+                        conversation_history: Optional[List[dict]] = None) -> dict:
     
     # --- 优先尝试 ChromaDB 检索流程 ---
     chroma_ready = (CHROMA_DIR / "chroma.sqlite3").exists()
     if chroma_ready:
         print(f"Using ChromaDB retrieval for question: {question}")
-        chunks = retrieve_chunks(
+        chunks, stage_info = retrieve_chunks(
             question, 
             n_results=llm_settings.evidence_k if llm_settings else 20,
             doi_filter=dois,
@@ -113,15 +115,17 @@ Question: {question}
 
 Answer (cite every claim with [n], no uncited summary at the end):"""
 
+            messages = [{"role": "system", "content": system_msg}]
+            if conversation_history:
+                messages.extend(conversation_history)
+            messages.append({"role": "user", "content": user_msg})
+
             try:
                 response = await litellm.acompletion(
                     model=target_llm,
                     api_key=llm_settings.api_key if llm_settings and llm_settings.api_key else None,
                     api_base=llm_settings.api_base if llm_settings and llm_settings.api_base else None,
-                    messages=[
-                        {"role": "system", "content": system_msg},
-                        {"role": "user", "content": user_msg}
-                    ]
+                    messages=messages
                 )
                 answer_text = response.choices[0].message.content
                 
@@ -149,7 +153,8 @@ Answer (cite every claim with [n], no uncited summary at the end):"""
                         "uncited_sentences": structural.uncited_sentences,
                         "cited_indices": structural.cited_indices,
                     },
-                    "retrieval_source": "chromadb"
+                    "retrieval_source": "chromadb",
+                    "retrieval_info": stage_info
                 }
             except Exception as e:
                 print(f"ChromaDB workflow failed, falling back to PaperQA2: {e}")

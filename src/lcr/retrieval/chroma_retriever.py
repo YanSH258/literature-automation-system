@@ -197,7 +197,8 @@ def _get_retriever() -> ChromaRetriever:
         _retriever_instance = ChromaRetriever()
     return _retriever_instance
 
-def retrieve_chunks(question, **kwargs) -> List[LCRChunk]:
+def retrieve_chunks(question, **kwargs) -> tuple[List[LCRChunk], dict]:
     if not CHROMA_DIR.exists():
-        return []
+        return [], {}
     return _get_retriever().retrieve_two_stage(question, **kwargs)
+

@@ -10,7 +10,7 @@
     <style>
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         #settings-drawer { transition: transform 0.3s ease-in-out; transform: translateX(100%); }
         #settings-drawer.open { transform: translateX(0); }
@@ -18,14 +18,14 @@
         #drawer-overlay.open { pointer-events: auto; opacity: 1; }
         
         /* Markdown Styling */
-        #answer-text h1,#answer-text h2,#answer-text h3 { font-weight:700; margin:1.2em 0 .5em; color: #1e293b; }
-        #answer-text p { margin-bottom:1em; line-height: 1.8; color: #334155; }
-        #answer-text strong { font-weight:700; color: #2563eb; }
-        #answer-text ul,#answer-text ol { margin-left:1.5em; margin-bottom:1em; list-style:disc; }
-        #answer-text li { margin-bottom:0.4em; }
-        #answer-text table { width: 100%; border-collapse: collapse; margin: 1em 0; font-size: 0.85em; }
-        #answer-text th, #answer-text td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; }
-        #answer-text th { background: #f8fafc; font-weight: 700; }
+        .markdown-content h1,.markdown-content h2,.markdown-content h3 { font-weight:700; margin:1.2em 0 .5em; color: #1e293b; }
+        .markdown-content p { margin-bottom:1em; line-height: 1.8; color: #334155; }
+        .markdown-content strong { font-weight:700; color: #2563eb; }
+        .markdown-content ul,.markdown-content ol { margin-left:1.5em; margin-bottom:1em; list-style:disc; }
+        .markdown-content li { margin-bottom:0.4em; }
+        .markdown-content table { width: 100%; border-collapse: collapse; margin: 1em 0; font-size: 0.85em; }
+        .markdown-content th, .markdown-content td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; }
+        .markdown-content th { background: #f8fafc; font-weight: 700; }
     </style>
 </head>
 <body class="bg-slate-50 h-screen flex flex-col font-sans text-slate-900 overflow-hidden">
@@ -72,7 +72,7 @@
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-xs font-bold text-slate-500 mb-1">Evidence K</label>
-                        <input type="number" id="setting-k" value="100" min="5" max="200" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <input type="number" id="setting-k" value="50" min="5" max="200" class="w-full border border-slate-200 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-slate-500 mb-1">Max Sources</label>
@@ -91,71 +91,64 @@
         </div>
     </div>
 
-    <header class="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm">
+    <header class="bg-white border-b border-slate-200 px-6 py-3 flex justify-between items-center sticky top-0 z-10 shadow-sm">
         <div class="flex items-center space-x-2">
             <div class="bg-blue-600 text-white p-1.5 rounded-lg shadow-inner"><i class="fas fa-dna"></i></div>
             <h1 class="text-xl font-bold tracking-tight">LCR <span class="text-blue-600">Research Brain</span></h1>
         </div>
-        <div class="flex items-center space-x-6">
+        <div class="flex items-center space-x-4">
             <div class="flex items-center space-x-2 px-3 py-1 bg-slate-50 border border-slate-100 rounded-full">
                 <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                <span class="text-xs text-slate-500 font-mono italic">1,220 Papers Online</span>
+                <span id="header-stats" class="text-[10px] text-slate-500 font-mono italic">Database Online</span>
             </div>
             <button id="open-settings" class="text-slate-400 hover:text-slate-600 p-1 transition"><i class="fas fa-sliders-h text-xl"></i></button>
         </div>
     </header>
 
-    <main class="flex-1 min-h-0 flex flex-col bg-white overflow-hidden items-center">
-        <div class="w-full max-w-4xl h-full flex flex-col">
-            <!-- Search -->
-            <div class="p-8 bg-white border-b border-slate-100">
-                <div class="mb-5">
-                    <textarea id="question" rows="3"
-                        class="w-full border-2 border-slate-100 rounded-2xl p-5 text-slate-800 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition resize-none text-lg leading-relaxed placeholder:text-slate-300"
-                        placeholder="Describe a research problem or ask about specific results..."></textarea>
-                </div>
+    <main class="flex-1 min-h-0 flex overflow-hidden">
+        <!-- 左侧历史栏 -->
+        <aside class="w-60 bg-slate-900 flex flex-col flex-shrink-0">
+            <div class="p-4 border-b border-slate-800">
+                <button id="new-chat-btn" class="w-full bg-slate-800 hover:bg-slate-700 text-white text-sm py-2.5 px-3 rounded-xl font-bold flex items-center justify-center space-x-2 transition border border-slate-700">
+                    <i class="fas fa-plus text-xs opacity-50"></i><span>New Chat</span>
+                </button>
+            </div>
+            <div id="history-list" class="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar"></div>
+        </aside>
 
-                <div class="flex justify-between items-center">
-                    <div class="flex items-center space-x-4">
-                        <select id="prompt-template-select"
-                            class="border border-slate-200 rounded-lg px-4 py-2 text-sm text-slate-600 focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50 hover:bg-slate-100 transition min-w-[200px]">
-                            <option value="">Loading templates...</option>
-                        </select>
-                        <button id="edit-prompt-btn" class="text-slate-400 hover:text-blue-600 p-2" title="View/Edit Template"><i class="fas fa-code"></i></button>
+        <!-- 右侧聊天区 -->
+        <div class="flex-1 flex flex-col min-w-0 bg-white">
+            <!-- 聊天线程 -->
+            <div id="chat-thread" class="flex-1 overflow-y-auto p-6 md:p-10 custom-scrollbar bg-slate-50/30">
+                <div id="welcome-screen" class="h-full flex flex-col items-center justify-center text-slate-300 space-y-4">
+                    <i class="fas fa-dna text-6xl opacity-10"></i>
+                    <div class="text-center">
+                        <p class="text-slate-400 font-bold">Ask anything about your literature</p>
+                        <p class="text-[10px] text-slate-400 uppercase tracking-widest mt-1">Two-stage retrieval across all indexed papers</p>
                     </div>
-                    <button id="ask-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-10 py-3 rounded-xl font-black transition shadow-lg shadow-blue-500/30 flex items-center space-x-3">
-                        <i class="fas fa-bolt"></i><span>Run Auditor</span>
-                    </button>
-                </div>
-                
-                <div id="prompt-edit-panel" class="hidden mt-4">
-                    <textarea id="prompt-content-input" rows="8" class="w-full border border-slate-200 rounded-xl p-4 text-xs font-mono text-slate-600 bg-slate-50 leading-normal"></textarea>
                 </div>
             </div>
 
-            <!-- Results -->
-            <div id="result-area" class="flex-1 overflow-y-auto p-10 custom-scrollbar bg-slate-50/20">
-                <div id="welcome-screen" class="h-full flex flex-col items-center justify-center text-slate-300 space-y-6">
-                    <div class="w-20 h-24 bg-slate-100 rounded-2xl flex items-center justify-center border-b-4 border-slate-200">
-                        <i class="fas fa-scroll text-4xl opacity-30"></i>
-                    </div>
-                    <div class="text-center">
-                        <p class="text-lg font-bold text-slate-400 uppercase tracking-widest">Global Database Mode</p>
-                        <p class="text-sm">Two-stage retrieval active across all 1,220 papers.</p>
-                    </div>
-                </div>
-
-                <div id="answer-container" class="hidden space-y-10 pb-20">
-                    <article class="bg-white p-10 rounded-3xl shadow-xl shadow-slate-200/30 border border-slate-100 relative">
-                        <div class="absolute -top-3 left-10 px-4 py-1 bg-slate-800 text-white text-[10px] font-black uppercase tracking-widest rounded-md">Audit Report</div>
-                        <div id="answer-text" class="text-slate-800"></div>
-                    </article>
-                    
-                    <div class="space-y-6">
-                        <h3 class="px-2 text-xs font-black text-slate-400 uppercase tracking-widest flex items-center">
-                            <i class="fas fa-list-ol mr-2 text-blue-500"></i>Referenced Studies
-                        </h3>
-                        <div id="citations-list" class="space-y-4"></div>
+            <!-- 底部输入栏 -->
+            <div class="border-t border-slate-100 bg-white p-4">
+                <div class="max-w-4xl mx-auto">
+                    <div class="flex items-end space-x-3">
+                        <div class="flex-1">
+                            <textarea id="question" rows="2"
+                                class="w-full border border-slate-200 rounded-2xl px-5 py-4 text-slate-800 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition resize-none text-sm placeholder:text-slate-400"
+                                placeholder="Ask a question about your papers... (Enter to send, Shift+Enter for new line)"></textarea>
+                            <div class="flex items-center space-x-3 mt-2">
+                                <select id="prompt-template-select"
+                                    class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-600 focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50 min-w-[160px]"></select>
+                                <button id="edit-prompt-btn" class="text-slate-400 hover:text-blue-600 text-xs" title="Edit Template"><i class="fas fa-code"></i></button>
+                            </div>
+                            <div id="prompt-edit-panel" class="hidden mt-2">
+                                <textarea id="prompt-content-input" rows="5" class="w-full border border-slate-200 rounded-lg p-3 text-xs font-mono text-slate-600 bg-slate-50"></textarea>
+                            </div>
+                        </div>
+                        <button id="ask-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-2xl font-bold transition shadow-lg shadow-blue-500/20 flex items-center space-x-2 flex-shrink-0">
+                            <i class="fas fa-paper-plane"></i><span>Send</span>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -171,23 +164,53 @@
             custom: { apiBase: "", models: [] }
         };
 
-        let llmSettings = { llm: "deepseek/deepseek-chat", api_key: "", api_base: "", evidence_k: 100, max_sources: 15, prompt_template: "" };
+        // --- State ---
+        let llmSettings = JSON.parse(localStorage.getItem('lcr_settings')) || { 
+            llm: "deepseek/deepseek-chat", api_key: "", api_base: "", evidence_k: 50, max_sources: 15, prompt_template: "" 
+        };
+        let conversations = JSON.parse(localStorage.getItem('lcr_conversations')) || [];
+        let currentConvId = null;
 
-        // DOM
-        const askBtn = document.getElementById('ask-btn'), questionInput = document.getElementById('question'), welcomeScreen = document.getElementById('welcome-screen'), answerContainer = document.getElementById('answer-container'), answerText = document.getElementById('answer-text'), citationsList = document.getElementById('citations-list'), promptTemplateSelect = document.getElementById('prompt-template-select'), promptEditPanel = document.getElementById('prompt-edit-panel'), promptContentInput = document.getElementById('prompt-content-input');
-        const openSettingsBtn = document.getElementById('open-settings'), closeSettingsBtn = document.getElementById('close-settings'), settingsDrawer = document.getElementById('settings-drawer'), drawerOverlay = document.getElementById('drawer-overlay'), applySettingsBtn = document.getElementById('apply-settings'), testLlmBtn = document.getElementById('test-llm-btn'), testStatus = document.getElementById('test-status'), settingProvider = document.getElementById('setting-provider'), settingModel = document.getElementById('setting-model'), settingKey = document.getElementById('setting-key'), settingBase = document.getElementById('setting-base'), settingK = document.getElementById('setting-k'), settingSources = document.getElementById('setting-sources');
+        // --- DOM ---
+        const askBtn = document.getElementById('ask-btn'), 
+              questionInput = document.getElementById('question'), 
+              chatThread = document.getElementById('chat-thread'),
+              historyList = document.getElementById('history-list'),
+              newChatBtn = document.getElementById('new-chat-btn'),
+              promptTemplateSelect = document.getElementById('prompt-template-select'), 
+              promptEditPanel = document.getElementById('prompt-edit-panel'), 
+              promptContentInput = document.getElementById('prompt-content-input');
+              
+        const openSettingsBtn = document.getElementById('open-settings'), 
+              closeSettingsBtn = document.getElementById('close-settings'), 
+              settingsDrawer = document.getElementById('settings-drawer'), 
+              drawerOverlay = document.getElementById('drawer-overlay'), 
+              applySettingsBtn = document.getElementById('apply-settings'), 
+              testLlmBtn = document.getElementById('test-llm-btn'), 
+              testStatus = document.getElementById('test-status'), 
+              settingProvider = document.getElementById('setting-provider'), 
+              settingModel = document.getElementById('setting-model'), 
+              settingKey = document.getElementById('setting-key'), 
+              settingBase = document.getElementById('setting-base'), 
+              settingK = document.getElementById('setting-k'), 
+              settingSources = document.getElementById('setting-sources');
 
-        // --- Settings ---
+        // --- Settings Logic ---
         const closeDrawer = () => { settingsDrawer.classList.remove('open'); drawerOverlay.classList.remove('open'); };
-        openSettingsBtn.onclick = () => { settingsDrawer.classList.add('open'); drawerOverlay.classList.add('open'); };
+        openSettingsBtn.onclick = () => {
+            settingKey.value = llmSettings.api_key;
+            settingBase.value = llmSettings.api_base;
+            settingK.value = llmSettings.evidence_k;
+            settingSources.value = llmSettings.max_sources;
+            settingsDrawer.classList.add('open'); drawerOverlay.classList.add('open');
+        };
         closeSettingsBtn.onclick = drawerOverlay.onclick = closeDrawer;
 
-        function onProviderChange() {
+        settingProvider.onchange = () => {
             const config = PROVIDER_MODELS[settingProvider.value];
             settingModel.innerHTML = config.models.map(m => `<option value="${m.value}">${m.label}</option>`).join('');
             if (config.apiBase) settingBase.value = config.apiBase;
-        }
-        settingProvider.onchange = onProviderChange;
+        };
         
         applySettingsBtn.onclick = () => {
             llmSettings = { 
@@ -198,21 +221,258 @@
                 evidence_k: parseInt(settingK.value),
                 max_sources: parseInt(settingSources.value)
             };
+            localStorage.setItem('lcr_settings', JSON.stringify(llmSettings));
             closeDrawer();
         };
 
-        testLlmBtn.onclick = async () => {
-            testLlmBtn.disabled = true; testStatus.classList.remove('hidden'); testStatus.textContent = 'Testing...';
+        // --- Conversation Management ---
+        function saveConversations() {
+            if (conversations.length > 50) conversations = conversations.slice(0, 50);
+            localStorage.setItem('lcr_conversations', JSON.stringify(conversations));
+        }
+
+        function renderHistoryList() {
+            historyList.innerHTML = '';
+            conversations.forEach(conv => {
+                const item = document.createElement('div');
+                item.className = `group flex items-center justify-between p-3 rounded-xl cursor-pointer transition text-sm ${conv.id === currentConvId ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800'}`;
+                item.innerHTML = `
+                    <div class="flex items-center space-x-3 overflow-hidden flex-1">
+                        <i class="fas fa-comment-alt text-xs opacity-50"></i>
+                        <span class="truncate">${conv.title}</span>
+                    </div>
+                    <button class="delete-btn opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 transition" data-id="${conv.id}">
+                        <i class="fas fa-trash-alt text-[10px]"></i>
+                    </button>
+                `;
+                item.onclick = (e) => {
+                    if (e.target.closest('.delete-btn')) {
+                        conversations = conversations.filter(c => c.id !== conv.id);
+                        if (currentConvId === conv.id) startNewConversation();
+                        saveConversations();
+                        renderHistoryList();
+                        return;
+                    }
+                    switchToConversation(conv.id);
+                };
+                historyList.appendChild(item);
+            });
+        }
+
+        function switchToConversation(id) {
+            currentConvId = id;
+            const conv = conversations.find(c => c.id === id);
+            renderChatThread(conv);
+            renderHistoryList();
+        }
+
+        function startNewConversation() {
+            currentConvId = null;
+            chatThread.innerHTML = `
+                <div id="welcome-screen" class="h-full flex flex-col items-center justify-center text-slate-300 space-y-4">
+                    <i class="fas fa-dna text-6xl opacity-10"></i>
+                    <div class="text-center">
+                        <p class="text-slate-400 font-bold">Ask anything about your literature</p>
+                        <p class="text-[10px] text-slate-400 uppercase tracking-widest mt-1">Two-stage retrieval across all indexed papers</p>
+                    </div>
+                </div>
+            `;
+            renderHistoryList();
+        }
+
+        newChatBtn.onclick = startNewConversation;
+
+        function renderChatThread(conv) {
+            chatThread.innerHTML = '';
+            if (!conv || conv.turns.length === 0) {
+                startNewConversation();
+                return;
+            }
+            conv.turns.forEach(turn => {
+                appendUserMessage(turn.question);
+                appendAssistantMessage(turn.answer, turn.citations, turn.retrieval_info, turn.retrieval_source);
+            });
+            chatThread.scrollTo({ top: chatThread.scrollHeight, behavior: 'smooth' });
+        }
+
+        function appendUserMessage(text) {
+            const welcome = document.getElementById('welcome-screen');
+            if (welcome) welcome.remove();
+            
+            const msg = document.createElement('div');
+            msg.className = 'flex flex-col items-end mb-8';
+            msg.innerHTML = `
+                <div class="max-w-[80%] bg-slate-800 text-white px-5 py-3 rounded-2xl rounded-tr-none text-sm shadow-sm leading-relaxed">
+                    ${text}
+                </div>
+            `;
+            chatThread.appendChild(msg);
+        }
+
+        function appendAssistantMessage(answer, citations = [], retrieval_info = null, source = 'chromadb') {
+            const msg = document.createElement('div');
+            msg.className = 'flex flex-col items-start mb-10';
+            
+            let badge = '';
+            if (source === 'chromadb' && retrieval_info) {
+                badge = `
+                    <div class="flex items-center mb-3">
+                        <span class="text-[9px] bg-emerald-50 text-emerald-600 border border-emerald-200 px-2 py-0.5 rounded-full font-mono flex items-center">
+                            <i class="fas fa-bolt mr-1"></i>ChromaDB · Stage1: ${retrieval_info.stage1_docs} papers → Stage2: ${retrieval_info.final_chunks} chunks
+                        </span>
+                    </div>
+                `;
+            } else if (source === 'paperqa') {
+                badge = `
+                    <div class="flex items-center mb-3">
+                        <span class="text-[9px] bg-amber-50 text-amber-600 border border-amber-200 px-2 py-0.5 rounded-full font-mono flex items-center">
+                            <i class="fas fa-exclamation-triangle mr-1"></i>PaperQA2 Fallback
+                        </span>
+                    </div>
+                `;
+            }
+
+            const citationsHtml = citations.map(c => {
+                const meta = c.metadata || {};
+                const authors = meta.creators ? (meta.creators.split(';')[0] + (meta.creators.includes(';') ? ' et al.' : '')) : 'Unknown';
+                return `
+                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-100 mb-2">
+                        <div class="flex items-start space-x-3">
+                            <span class="bg-blue-600 text-white w-6 h-6 rounded flex-shrink-0 flex items-center justify-center font-bold text-[10px]">${c.display_index}</span>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-xs font-bold text-slate-800 truncate">${meta.title || c.doc_id}</div>
+                                <div class="text-[9px] text-slate-400 mt-0.5">${authors} (${(meta.year||'').slice(0,4)}) · ${meta.publication || ''}</div>
+                                <div class="text-[10px] text-slate-500 italic mt-2 border-l-2 border-slate-200 pl-3 leading-relaxed">"${c.snippet}..."</div>
+                                <div class="mt-2 text-[8px] text-slate-300 font-mono">DOI: ${meta.doi}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            msg.innerHTML = `
+                ${badge}
+                <div class="max-w-[90%] bg-white p-6 rounded-3xl rounded-tl-none border border-slate-100 shadow-sm">
+                    <div class="markdown-content text-sm text-slate-800">${marked.parse(answer)}</div>
+                    
+                    ${citations.length > 0 ? `
+                        <div class="mt-6 pt-6 border-t border-slate-50">
+                            <button class="toggle-citations flex items-center text-xs font-black text-slate-400 uppercase tracking-widest hover:text-blue-600 transition">
+                                <i class="fas fa-chevron-right mr-2 text-[8px] transition-transform"></i>
+                                Referenced Studies (${citations.length})
+                            </button>
+                            <div class="citations-wrapper hidden mt-4 space-y-2">
+                                ${citationsHtml}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            
+            chatThread.appendChild(msg);
+            
+            // Add toggle logic
+            const toggle = msg.querySelector('.toggle-citations');
+            if (toggle) {
+                toggle.onclick = () => {
+                    const wrapper = msg.querySelector('.citations-wrapper');
+                    const icon = toggle.querySelector('i');
+                    wrapper.classList.toggle('hidden');
+                    icon.style.transform = wrapper.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(90deg)';
+                };
+            }
+        }
+
+        // --- Execute Ask ---
+        async function handleAsk() {
+            const question = questionInput.value.trim();
+            if (!question || askBtn.disabled) return;
+
+            const conversationHistory = [];
+            if (currentConvId) {
+                const conv = conversations.find(c => c.id === currentConvId);
+                conv.turns.forEach(t => {
+                    conversationHistory.push({ role: "user", content: t.question });
+                    conversationHistory.push({ role: "assistant", content: t.answer });
+                });
+            }
+
+            appendUserMessage(question);
+            questionInput.value = '';
+            questionInput.style.height = 'auto';
+            
+            const loader = document.createElement('div');
+            loader.className = 'flex flex-col items-start mb-10 assistant-placeholder';
+            loader.innerHTML = `
+                <div class="bg-white p-6 rounded-3xl rounded-tl-none border border-slate-100 shadow-sm flex items-center space-x-3">
+                    <div class="flex space-x-1">
+                        <div class="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce"></div>
+                        <div class="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+                        <div class="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
+                    </div>
+                    <span class="text-xs text-slate-400 font-medium">Auditing knowledge base...</span>
+                </div>
+            `;
+            chatThread.appendChild(loader);
+            chatThread.scrollTo({ top: chatThread.scrollHeight, behavior: 'smooth' });
+
+            askBtn.disabled = true;
             try {
-                const res = await fetch('/admin/test-llm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ llm: settingModel.value, api_key: settingKey.value.trim(), api_base: settingBase.value.trim() }) });
-                const result = await res.json();
-                testStatus.textContent = result.status === 'success' ? 'Connection OK' : 'Error: ' + result.message;
-                testStatus.className = `text-[10px] text-center p-2 rounded ${result.status === 'success' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`;
-            } catch (e) { testStatus.textContent = 'Failed: ' + e.message; }
-            finally { testLlmBtn.disabled = false; }
+                const res = await fetch('/ask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        question, 
+                        dois: null, 
+                        llm_settings: llmSettings,
+                        conversation_history: conversationHistory 
+                    })
+                });
+                const data = await res.json();
+                loader.remove();
+
+                const source = data.retrieval_source || 'chromadb';
+                appendAssistantMessage(data.answer, data.citations, data.retrieval_info, source);
+                
+                // Save state
+                if (!currentConvId) {
+                    currentConvId = Date.now().toString();
+                    conversations.unshift({
+                        id: currentConvId,
+                        title: question.slice(0, 30) + (question.length > 30 ? '...' : ''),
+                        created: new Date().toISOString(),
+                        turns: []
+                    });
+                }
+                const conv = conversations.find(c => c.id === currentConvId);
+                conv.turns.push({
+                    question,
+                    answer: data.answer,
+                    citations: data.citations,
+                    retrieval_info: data.retrieval_info,
+                    retrieval_source: source
+                });
+                saveConversations();
+                renderHistoryList();
+                chatThread.scrollTo({ top: chatThread.scrollHeight, behavior: 'smooth' });
+
+            } catch (err) {
+                loader.innerHTML = `<div class="bg-red-50 text-red-600 p-4 rounded-xl text-xs border border-red-100">${err.message}</div>`;
+                askBtn.disabled = false;
+            } finally {
+                askBtn.disabled = false;
+            }
+        }
+
+        askBtn.onclick = handleAsk;
+        questionInput.onkeydown = (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleAsk();
+            }
         };
 
-        // --- Prompts ---
+        // --- Initialization ---
         async function loadPromptTemplates() {
             try {
                 const res = await fetch('/prompts');
@@ -228,46 +488,45 @@
         promptTemplateSelect.onchange = () => { llmSettings.prompt_template = promptContentInput.value = promptTemplateSelect.value; };
         document.getElementById('edit-prompt-btn').onclick = () => promptEditPanel.classList.toggle('hidden');
 
-        // --- Execute ---
-        askBtn.onclick = async () => {
-            const question = questionInput.value.trim(); if (!question) return;
-            askBtn.disabled = true; askBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i><span>Auditing Database...</span>';
+        testLlmBtn.onclick = async () => {
+            testLlmBtn.disabled = true; testStatus.classList.remove('hidden'); testStatus.textContent = 'Testing...';
             try {
-                const res = await fetch('/ask', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ question, dois: null, llm_settings: llmSettings })
-                });
-                const data = await res.json();
-                welcomeScreen.classList.add('hidden'); answerContainer.classList.remove('hidden');
-                answerText.innerHTML = marked.parse(data.answer);
-                citationsList.innerHTML = data.citations.map(c => {
-                    const meta = c.metadata || {};
-                    const authors = meta.creators ? (meta.creators.split(';')[0] + (meta.creators.includes(';') ? ' et al.' : '')) : 'Unknown';
-                    return `<div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:border-blue-100 transition group relative overflow-hidden">
-                        <div class="flex justify-between items-start mb-3">
-                            <div class="flex items-center space-x-3">
-                                <span class="bg-blue-600 text-white w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm shadow-md">${c.display_index}</span>
-                                <div>
-                                    <div class="text-sm font-bold text-slate-800 leading-snug">${meta.title || c.doc_id}</div>
-                                    <div class="text-[10px] text-slate-400 mt-1">${authors} (${(meta.year||'').slice(0,4)}) · <span class="text-blue-400">${meta.publication || ''}</span></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="text-xs text-slate-600 leading-relaxed pl-11 border-l-2 border-slate-50 italic">"${c.snippet}..."</div>
-                        <div class="mt-3 pl-11 flex items-center space-x-4">
-                            <span class="text-[9px] font-mono text-slate-300">DOI: ${meta.doi}</span>
-                            ${meta.citation_key ? `<span class="text-[9px] font-black text-slate-400 uppercase tracking-tighter bg-slate-100 px-1.5 py-0.5 rounded">@${meta.citation_key}</span>` : ''}
-                        </div>
-                    </div>`;
-                }).join('');
-                document.getElementById('result-area').scrollTo({ top: 0, behavior: 'smooth' });
-            } catch (err) { alert(err.message); }
-            finally { askBtn.disabled = false; askBtn.innerHTML = '<i class="fas fa-bolt"></i><span>Run Auditor</span>'; }
+                const res = await fetch('/admin/test-llm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ llm: settingModel.value, api_key: settingKey.value.trim(), api_base: settingBase.value.trim() }) });
+                const result = await res.json();
+                testStatus.textContent = result.status === 'success' ? 'Connection OK' : 'Error: ' + result.message;
+                testStatus.className = `text-[10px] text-center p-2 rounded ${result.status === 'success' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`;
+            } catch (e) { testStatus.textContent = 'Failed: ' + e.message; }
+            finally { testLlmBtn.disabled = false; }
         };
 
-        onProviderChange();
+        async function updateStats() {
+            try {
+                const res = await fetch('/admin/index-status');
+                const data = await res.json();
+                if (data.stats) {
+                    document.getElementById('header-stats').textContent = `${data.stats.total_docs.toLocaleString()} Papers · ${data.stats.total_chunks.toLocaleString()} Chunks`;
+                }
+            } catch (e) {}
+        }
+
+        // Init LLM Provider
+        const initProvider = () => {
+            settingProvider.value = 'deepseek';
+            for (const [p, config] of Object.entries(PROVIDER_MODELS)) {
+                if (config.models.some(m => m.value === llmSettings.llm)) {
+                    settingProvider.value = p;
+                    break;
+                }
+            }
+            const config = PROVIDER_MODELS[settingProvider.value];
+            settingModel.innerHTML = config.models.map(m => `<option value="${m.value}" ${m.value === llmSettings.llm ? 'selected' : ''}>${m.label}</option>`).join('');
+            if (llmSettings.api_base) settingBase.value = llmSettings.api_base;
+        };
+
+        initProvider();
         loadPromptTemplates();
+        renderHistoryList();
+        updateStats();
     </script>
 </body>
 </html>
