@@ -55,7 +55,7 @@ cp .env.example .env
 python run_mineru.py
 ```
 
-Structured JSON output is saved to `output/`. If skipped, the system falls back to `pypdf`.
+Structured JSON output is saved to `data/mineru_cache/`. If skipped, the system falls back to `pypdf`.
 
 ### Step 2 — Build the ChromaDB index
 
@@ -94,6 +94,9 @@ Open `http://localhost:8000` for the web UI.
 | `POST /admin/build-index` | Trigger background re-indexing |
 | `GET /admin/index-status` | Index build progress and chunk count |
 | `GET /admin/tags` | Available auto-tag taxonomy |
+| `POST /admin/test-llm` | Test LLM connectivity with current settings |
+| `GET /prompts` | List saved prompt templates |
+| `POST /prompts` | Save a new prompt template |
 
 ---
 
@@ -112,6 +115,9 @@ All settings use the `LCR_` env prefix. Override any in `.env`:
 | `LCR_EVIDENCE_K` | `50` | Max chunks passed to the answer LLM |
 | `LCR_EVIDENCE_MIN_SCORE` | `6.0` | Minimum evidence score (0–10). Lower if answers lack evidence. |
 | `LCR_CHUNK_SIZE` | `800` | Character limit per chunk |
+| `LCR_MINIMAX_API_KEY` | *(empty)* | MiniMax API key for auto-tagging. Leave empty to skip. |
+| `LCR_ZOTERO_DIR` | *(auto-detect)* | Path to Zotero data directory. Auto-detected on WSL/Linux if unset. |
+| `LCR_ZOTERO_MCP_DB_PATH` | `~/.config/zotero-mcp/chroma_db` | Path to [zotero-mcp](https://github.com/zotero-mcp/zotero-mcp) ChromaDB. Leave empty to disable. |
 
 See `.env.example` for the full list.
 
