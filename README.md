@@ -87,16 +87,100 @@ Open `http://localhost:8000` for the web UI.
 
 ## API
 
-| Endpoint | Description |
-|---|---|
-| `POST /ask` | Ask a question. Accepts `question`, optional `dois`, `collection_filter`, `tag_filter`, `conversation_history` |
-| `GET /zotero/collections` | Zotero collection tree for filtering |
-| `POST /admin/build-index` | Trigger background re-indexing |
-| `GET /admin/index-status` | Index build progress and chunk count |
-| `GET /admin/tags` | Available auto-tag taxonomy |
-| `POST /admin/test-llm` | Test LLM connectivity with current settings |
-| `GET /prompts` | List saved prompt templates |
-| `POST /prompts` | Save a new prompt template |
+交互式文档：服务启动后访问 `http://localhost:8000/docs`（Swagger UI）可直接在浏览器里测试所有接口。
+
+---
+
+### POST /ask — 提问
+
+发送问题，返回带引用编号的答案。
+
+```json
+// 请求
+{
+  "question": "什么材料掺杂可以提升钙钛矿太阳能电池效率？",
+  "collection_filter": "钙钛矿",      // 可选：限定在某个 Zotero 分类下检索
+  "tag_filter": ["DFT"],              // 可选：按自动标签过滤
+  "dois": ["10.1002/adfm.xxx"],       // 可选：只在指定 DOI 的论文里检索
+  "conversation_history": [],         // 可选：多轮对话上下文
+  "llm_settings": {
+    "llm": "deepseek/deepseek-chat",
+    "api_key": "sk-...",
+    "api_base": ""
+  }
+}
+
+// 响应
+{
+  "answer": "研究表明，Cs 掺杂可以显著提升稳定性 [1]，而 Pb 部分替换为 Sn 能拓宽光谱吸收 [2]。",
+  "citations": [
+    {
+      "display_index": 1,
+      "doc_id": "10.1002/adfm.xxx",
+      "snippet": "原文片段...",
+      "rcs_score": 8.5,
+      "metadata": { "title": "...", "year": "2023", "creators": "..." }
+    }
+  ],
+  "structural_check": { "passed": true, "uncited_sentences": [] },
+  "retrieval_info": { "stage1_found": 12, "final_chunks": 8 }
+}
+```
+
+---
+
+### GET /zotero/collections — 获取文献分类树
+
+返回你 Zotero 里所有分类（Collection）的层级结构，每个分类包含其中的论文列表。用于前端渲染分类选择器。
+
+---
+
+### POST /admin/build-index — 重建索引
+
+触发后台全量索引任务（读取 Zotero → 打标 → 写入 ChromaDB）。立即返回 `{"status": "started"}`，实际进度通过 `/admin/index-status` 查询。
+
+---
+
+### GET /admin/index-status — 查询索引进度
+
+```json
+{
+  "is_running": true,
+  "current_step": "chroma_indexing",  // loading_zotero / auto_tagging / chroma_indexing / completed
+  "processed": 42,
+  "total": 150,
+  "stats": { "total_chunks": 8300 }
+}
+```
+
+---
+
+### POST /admin/test-llm — 测试 LLM 连通性
+
+用当前填写的 API Key 和模型名发一条 `ping`，验证是否能正常调用。
+
+```json
+// 请求
+{ "llm": "deepseek/deepseek-chat", "api_key": "sk-...", "api_base": "" }
+
+// 响应
+{ "status": "success", "content": "pong" }
+// 或
+{ "status": "error", "message": "Connection failed" }
+```
+
+---
+
+### GET /prompts / POST /prompts — Prompt 模板管理
+
+- `GET /prompts` — 列出 `prompts/` 目录下所有已保存的 prompt 模板
+- `POST /prompts` — 保存新模板，支持变量 `{question}` `{text}` `{citation}` `{summary_length}`
+
+---
+
+### GET /admin/tags — 查看标签体系
+
+返回 `auto_tagger.py` 中定义的 `CHEM_TAG_TAXONOMY`，即 MiniMax 打标时使用的标签分类词典。
 
 ---
 
