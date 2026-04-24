@@ -1,36 +1,18 @@
-import re
 import csv
 from pathlib import Path
-
+from typing import List, Dict
 
 def normalize_doi(doi: str) -> str:
-    if not doi:
-        return ""
-    doi = str(doi).lower().strip()
-    match = re.match(r'^(10\.\d+)[/_](.+)$', doi)
-    if match:
-        prefix = match.group(1)
-        suffix = match.group(2)
-        return f"{prefix}/{suffix}".replace("/", "_")
+    """将 DOI 中的 / 替换为 _ 以便用作文件名/ID。"""
     return doi.replace("/", "_")
 
+def reverse_doi(normalized: str) -> str:
+    """还原 normalize_doi 的结果为原始小写 DOI。"""
+    return normalized.replace("_", "/").lower()
 
-def reverse_doi(encoded_doi: str) -> str:
-    if not encoded_doi:
-        return ""
-    match = re.match(r'^(10\.\d+)_(.+)$', str(encoded_doi).lower())
-    if match:
-        return f"{match.group(1)}/{match.group(2)}"
-    return str(encoded_doi).lower()
-
-
-def generate_manifest_csv(records: list[dict], output_path: str) -> None:
-    """
-    生成 PaperQA2 支持的 manifest.csv。
-    records: [{"file_location": str, "doi": str, "title": str}, ...]
-    """
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w", newline="", encoding="utf-8") as f:
+def generate_manifest_csv(records: List[Dict], path: str) -> None:
+    """将记录列表写入 CSV 文件，字段顺序为 file_location, doi, title。"""
+    with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["file_location", "doi", "title"])
         writer.writeheader()
         writer.writerows(records)

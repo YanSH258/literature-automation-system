@@ -65,24 +65,26 @@ class TestIngest(unittest.TestCase):
         mock_connect.return_value = mock_conn
         mock_cursor = mock_conn.cursor.return_value
         
-        # Mock DOI_QUERY results
-        mock_cursor.fetchall.return_value = [
-            (1, "KEY1", "10.1001/test"),
-            (2, "KEY2", "10.1002/test")
+        # Mock fetchall results for all queries in order:
+        # 1. ABSTRACT_QUERY
+        # 2. META_ALL_QUERY
+        # 3. item_keywords
+        # 4. collections
+        # 5. collectionItems
+        # 6. DOI_QUERY
+        # 7. itemAttachments
+        mock_cursor.fetchall.side_effect = [
+            [], # abstracts
+            [(1, "T1", "2021"), (2, "T2", "2022")], # metadata
+            [], # item_keywords
+            [], # col_info
+            [], # item_to_cols
+            [(1, "KEY1", "10.1001/test"), (2, "KEY2", "10.1002/test")], # doi_rows
+            [(1, "ATTKEY1", "storage:test.pdf")] # attachments
         ]
         
-        # Mock ATTACHMENT_QUERY results
-        # First call for item 1: has attachment
-        # Second call for item 2: no attachment
-        mock_cursor.fetchone.side_effect = [
-            ("ATTKEY1", "storage:test.pdf", "application/pdf"),
-            None
-        ]
-        
-        # We need to mock Path.exists specifically for the storage path check inside load_records
-        # But since we already patched Path.exists globally in this test, it will return True
-        
-        with patch("lcr.ingest.zotero.Path.absolute", side_effect=lambda: Path("/fake/zotero/storage/ATTKEY1/test.pdf")):
+        # We need to mock Path.absolute specifically for the storage path check inside load_records
+        with patch("lcr.ingest.zotero.Path.absolute", side_effect=lambda *args, **kwargs: Path("/fake/zotero/storage/ATTKEY1/test.pdf")):
             ingestor = ZoteroIngestor(zotero_dir="/fake/zotero")
             records = ingestor.load_records()
             
@@ -91,6 +93,34 @@ class TestIngest(unittest.TestCase):
             self.assertIsNotNone(records[0].pdf_path)
             self.assertEqual(records[1].doi, "10.1002/test")
             self.assertIsNone(records[1].pdf_path)
+
+
+class TestChromaIngestor(unittest.TestCase):
+    def test_chunk_text_references(self):
+        from lcr.ingest.chroma_ingestor import ChromaIngestor
+        with patch.object(ChromaIngestor, '__init__', return_value=None):
+            ingestor = ChromaIngestor()
+            text = "## Introduction\nSome text.\n## References\nRef 1. Ref 2."
+            chunks = ingestor.chunk_text(text)
+            for c in chunks:
+                self.assertNotIn("References", c)
+                self.assertNotIn("Ref 1.", c)
+
+    def test_chunk_text_short(self):
+        from lcr.ingest.chroma_ingestor import ChromaIngestor
+        with patch.object(ChromaIngestor, '__init__', return_value=None):
+            ingestor = ChromaIngestor()
+            text = "## Intro\nShort."
+            chunks = ingestor.chunk_text(text, chunk_size=100)
+            self.assertEqual(len(chunks), 1)
+            self.assertIn("## Intro", chunks[0])
+
+    def test_chunk_text_empty(self):
+        from lcr.ingest.chroma_ingestor import ChromaIngestor
+        with patch.object(ChromaIngestor, '__init__', return_value=None):
+            ingestor = ChromaIngestor()
+            self.assertEqual(ingestor.chunk_text(""), [])
+
 
 if __name__ == "__main__":
     unittest.main()

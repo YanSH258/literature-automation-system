@@ -27,10 +27,11 @@ def build_citation_map(
         
     return citation_map
 
+
 def merge_citation_maps(maps: list[CitationMap]) -> dict[str, int]:
     merged: dict[str, int] = {}
-    for citation_map in maps:
-        for chunk_id, display_index in citation_map.reverse_lookup.items():
+    for cmap in maps:
+        for chunk_id, idx in cmap.reverse_lookup.items():
             if chunk_id not in merged:
-                merged[chunk_id] = display_index
+                merged[chunk_id] = idx
     return merged

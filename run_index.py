@@ -37,7 +37,6 @@ def backfill_metadata():
 
     log.info("=== Starting Metadata Backfill ===")
 
-    # 1. 加载 zotero-mcp 元数据（1120 条，速度快）
     zotero_db_path = Path.home() / ".config" / "zotero-mcp" / "chroma_db"
     if not zotero_db_path.exists():
         log.error(f"zotero-mcp database not found at {zotero_db_path}")
@@ -56,7 +55,6 @@ def backfill_metadata():
             }
     log.info(f"Loaded {len(z_meta)} records from zotero-mcp.")
 
-    # 2. 直接查 SQLite 获取全部 chunk ID（避免 collection.get() 全量挂死）
     lcr_sqlite = PROJ_ROOT / "data" / "chroma" / "chroma.sqlite3"
     conn = sqlite3.connect(f"file:{lcr_sqlite}?mode=ro", uri=True)
     rows = conn.execute("""
@@ -70,7 +68,6 @@ def backfill_metadata():
     all_ids = [r[0] for r in rows]
     log.info(f"Total chunks to scan: {len(all_ids)}")
 
-    # 3. 用 ChromaDB SDK 分批读取 metadata + 更新
     lcr_client = chromadb.PersistentClient(path=str(PROJ_ROOT / "data" / "chroma"))
     collection = lcr_client.get_collection("lcr_papers")
 
@@ -106,14 +103,12 @@ async def main(skip_tagging: bool, limit: int | None):
 
     log.info("=== LCR indexing started ===")
 
-    # 1. 加载 Zotero 记录
     ingestor = ZoteroIngestor()
     records = ingestor.load_records()
     if limit:
         records = records[:limit]
     log.info(f"Loaded {len(records)} records ({sum(1 for r in records if r.pdf_path)} with PDF)")
 
-    # 2. Auto-tagging
     if skip_tagging:
         tags_map: dict = {}
         log.info("Skipping tagging (--skip-tagging)")
@@ -122,20 +117,19 @@ async def main(skip_tagging: bool, limit: int | None):
         tags_map = await tag_all_records(records)
         log.info(f"Tagging done. {len(tags_map)} papers tagged.")
 
-    # 3. ChromaDB 索引
     log.info("Step 2/2: Indexing to ChromaDB...")
     chroma = ChromaIngestor()
     total = len(records)
     ok = skipped = failed = 0
 
     for i, rec in enumerate(records):
-        if not rec.pdf_path:
-            skipped += 1
-            continue
         try:
             tags = tags_map.get(rec.doi, [])
             chroma.ingest_record(rec, tags)
-            ok += 1
+            if rec.pdf_path:
+                ok += 1
+            else:
+                skipped += 1
             if (i + 1) % 50 == 0:
                 log.info(f"  Progress: {i+1}/{total} | ok={ok} skipped={skipped} failed={failed}")
         except Exception as e:
@@ -145,16 +139,134 @@ async def main(skip_tagging: bool, limit: int | None):
     stats = chroma.get_stats()
     log.info(f"=== Done: ok={ok} skipped={skipped} failed={failed} | {stats} ===")
 
+def backfill_keywords(batch_size: int = 500):
+    """将 Zotero tags（关键词）补填到已索引的 lcr_papers 和 lcr_abstracts chunks。"""
+    import chromadb
+    from lcr.ingest.zotero import ZoteroIngestor
+
+    log.info("=== Keywords backfill started ===")
+
+    records = ZoteroIngestor().load_records()
+    kw_map = {r.doi.lower().strip(): "|".join(r.keywords) for r in records if r.keywords}
+    log.info(f"Papers with keywords in Zotero: {len(kw_map)}")
+
+    lcr_client = chromadb.PersistentClient(path=str(PROJ_ROOT / "data" / "chroma"))
+
+    for coll_name in ("lcr_papers", "lcr_abstracts"):
+        collection = lcr_client.get_collection(coll_name)
+
+        import sqlite3
+        lcr_sqlite = PROJ_ROOT / "data" / "chroma" / "chroma.sqlite3"
+        conn = sqlite3.connect(f"file:{lcr_sqlite}?mode=ro", uri=True)
+        rows = conn.execute(f"""
+            SELECT e.embedding_id FROM embeddings e
+            JOIN segments s ON e.segment_id = s.id
+            JOIN collections c ON s.collection = c.id
+            WHERE c.name = '{coll_name}'
+        """).fetchall()
+        conn.close()
+        all_ids = [r[0] for r in rows]
+        log.info(f"  [{coll_name}] total chunks: {len(all_ids)}")
+
+        updated = 0
+        for i in range(0, len(all_ids), batch_size):
+            batch_ids = all_ids[i: i + batch_size]
+            res = collection.get(ids=batch_ids, include=["metadatas"])
+            update_ids, update_metas = [], []
+            for cid, meta in zip(res["ids"], res["metadatas"]):
+                doi = meta.get("doi", "").lower().strip()
+                kw = kw_map.get(doi, "")
+                if kw and not meta.get("keywords"):
+                    update_ids.append(cid)
+                    update_metas.append({**meta, "keywords": kw})
+            if update_ids:
+                collection.update(ids=update_ids, metadatas=update_metas)
+                updated += len(update_ids)
+
+        log.info(f"  [{coll_name}] updated {updated} chunks")
+
+    log.info("=== Keywords backfill done ===")
+
+
+def backfill_abstracts(batch_size: int = 50):
+    """单独补填 lcr_abstracts，分批写入防止显存 OOM。"""
+    from lcr.ingest.zotero import ZoteroIngestor
+    from lcr.ingest.chroma_ingestor import ChromaIngestor
+
+    log.info("=== Abstract backfill started ===")
+    records = ZoteroIngestor().load_records()
+    log.info(f"Loaded {len(records)} records")
+
+    chroma = ChromaIngestor()
+    existing_ids = set(chroma.abstracts_collection.get(include=[])["ids"])
+    log.info(f"Already in lcr_abstracts: {len(existing_ids)}")
+
+    seen = set(existing_ids)
+    pending, dedup_skipped = [], 0
+    for r in records:
+        doi_safe = r.doi.lower().strip().replace("/", "_")
+        if doi_safe in seen:
+            dedup_skipped += 1
+        else:
+            seen.add(doi_safe)
+            pending.append(r)
+    log.info(f"Pending: {len(pending)} (skipped {dedup_skipped} duplicates)")
+
+    z_meta_map = chroma._zotero_meta
+    written = failed = 0
+
+    for i in range(0, len(pending), batch_size):
+        batch = pending[i:i + batch_size]
+        ids, docs, metas = [], [], []
+        for r in batch:
+            abstract_text = f"{r.title or ''}\n{r.abstract or ''}".strip()
+            if not abstract_text:
+                continue
+            doi_safe = r.doi.lower().strip().replace("/", "_")
+            z = z_meta_map.get(r.doi.lower().strip(), {})
+            ids.append(doi_safe)
+            docs.append(abstract_text)
+            metas.append({
+                "doi": r.doi.lower().strip(),
+                "title": r.title or "",
+                "year": str(r.year or ""),
+                "collection_paths": "|".join(r.collection_paths),
+                "creators": z.get("creators", ""),
+                "publication": z.get("publication", ""),
+                "citation_key": z.get("citation_key", ""),
+            })
+
+        if not ids:
+            continue
+        try:
+            chroma.abstracts_collection.add(ids=ids, documents=docs, metadatas=metas)
+            written += len(ids)
+            log.info(f"  [{i + len(batch)}/{len(pending)}] written={written} failed={failed}")
+        except Exception as e:
+            failed += len(ids)
+            log.warning(f"  Batch {i}-{i+len(batch)} failed: {e}")
+
+    log.info(f"=== Abstract backfill done: written={written} failed={failed} | total={chroma.abstracts_collection.count()} ===")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--skip-tagging", action="store_true", help="跳过 MiniMax 打标步骤")
     parser.add_argument("--limit", type=int, default=None, help="只处理前 N 篇（调试用）")
     parser.add_argument("--backfill", action="store_true", help="补填存量分块的元数据 (作者、刊名等)")
+    parser.add_argument("--backfill-abstracts", action="store_true", help="单独补填 lcr_abstracts 摘要索引")
+    parser.add_argument("--backfill-keywords", action="store_true", help="将 Zotero 关键词补填到已索引的 chunks")
     args = parser.parse_args()
 
     if args.backfill:
         _setup_logging(BACKFILL_LOG_FILE)
         backfill_metadata()
+    elif args.backfill_abstracts:
+        _setup_logging(LOG_FILE)
+        backfill_abstracts()
+    elif args.backfill_keywords:
+        _setup_logging(LOG_FILE)
+        backfill_keywords()
     else:
         _setup_logging(LOG_FILE)
         asyncio.run(main(skip_tagging=args.skip_tagging, limit=args.limit))

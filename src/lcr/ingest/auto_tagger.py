@@ -5,6 +5,7 @@ import litellm
 from pathlib import Path
 from typing import List, Dict, Any
 from lcr.ingest.zotero import ZoteroRecord
+from lcr.config import settings as lcr_settings
 
 CACHE_DIR = Path.home() / ".cache" / "lcr"
 TAGS_CACHE_FILE = CACHE_DIR / "tags.json"
@@ -27,10 +28,15 @@ Papers:
 
 Return format: [{{"doi": "...", "tags": ["...", "..."]}}, ...]"""
 
-async def tag_batch(batch: List[ZoteroRecord], semaphore: asyncio.Semaphore) -> List[Dict[str, Any]]:
+import logging
+
+logger = logging.getLogger(__name__)
+
+async def tag_batch(records: List[ZoteroRecord], semaphore: asyncio.Semaphore) -> List[Dict[str, Any]]:
+
     async with semaphore:
         papers_data = []
-        for r in batch:
+        for r in records:
             papers_data.append({
                 "doi": r.doi,
                 "title": r.title or "Untitled",
@@ -43,22 +49,16 @@ async def tag_batch(batch: List[ZoteroRecord], semaphore: asyncio.Semaphore) -> 
         )
         
         try:
-            # 使用 litellm 路由到 MiniMax
-            # 注意：MiniMax 的 model 名称通常需要带前缀或直接指定提供商
-            # 这里按照 litellm 标准：openai/MiniMax-Text-01 (需配置 api_base)
             response = await litellm.acompletion(
                 model="minimax/MiniMax-M2.5",
-                api_key=os.environ.get("MINIMAX_API_KEY"),
-                api_base=os.environ.get("MINIMAX_API_BASE", "https://api.minimax.io/v1"),
+                api_key=lcr_settings.MINIMAX_API_KEY,
+                api_base=lcr_settings.MINIMAX_API_BASE,
                 messages=[{"role": "user", "content": prompt}],
             )
             
             content = response.choices[0].message.content
-            # 处理可能的 markdown 代码块
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
+            from lcr.utils import extract_json_from_llm_output
+            content = extract_json_from_llm_output(content)
             
             # 有时 LLM 会返回 {"results": [...]} 或直接是 [...]
             data = json.loads(content)
@@ -69,35 +69,35 @@ async def tag_batch(batch: List[ZoteroRecord], semaphore: asyncio.Semaphore) -> 
                         return val
             return data if isinstance(data, list) else []
             
-        except Exception as e:
-            print(f"Error tagging batch: {e}")
+        except Exception:
+            logger.exception("Error tagging batch")
             return []
 
-async def tag_all_records(records: List[ZoteroRecord], batch_size: int = 20) -> Dict[str, List[str]]:
-    # 1. 加载缓存
+async def tag_all_records(records: List[ZoteroRecord], batch_size: int = lcr_settings.TAGGING_BATCH_SIZE) -> Dict[str, List[str]]:
     CACHE_DIR.mkdir(exist_ok=True)
     cache = {}
     if TAGS_CACHE_FILE.exists():
         try:
             cache = json.loads(TAGS_CACHE_FILE.read_text())
-        except:
+        except (json.JSONDecodeError, OSError):
             pass
     
-    # 2. 筛选需要打标的（有摘要且不在缓存中）
     to_process = [r for r in records if r.doi not in cache and r.abstract]
     if not to_process:
         return cache
+        
+    if not lcr_settings.MINIMAX_API_KEY:
+        logger.info("LCR_MINIMAX_API_KEY not configured, skipping auto-tagging.")
+        return cache
 
-    print(f"Tagging {len(to_process)} new papers using MiniMax...")
+    logger.info(f"Tagging {len(to_process)} new papers using MiniMax...")
     
-    # 3. 分批异步处理
-    semaphore = asyncio.Semaphore(5) # 降低并发以免触发 MiniMax 频率限制
+    semaphore = asyncio.Semaphore(lcr_settings.TAGGING_SEMAPHORE)
     batches = [to_process[i:i + batch_size] for i in range(0, len(to_process), batch_size)]
     
     tasks = [tag_batch(b, semaphore) for b in batches]
     results = await asyncio.gather(*tasks)
     
-    # 4. 更新缓存
     new_tags_count = 0
     for batch_res in results:
         for item in batch_res:
@@ -105,8 +105,10 @@ async def tag_all_records(records: List[ZoteroRecord], batch_size: int = 20) -> 
                 cache[item["doi"]] = item["tags"]
                 new_tags_count += 1
     
-    TAGS_CACHE_FILE.write_text(json.dumps(cache, ensure_ascii=False, indent=2))
-    print(f"Tagging complete. Added {new_tags_count} new tags. Total cached: {len(cache)}")
+    _tmp = TAGS_CACHE_FILE.with_suffix(".tmp")
+    _tmp.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
+    _tmp.replace(TAGS_CACHE_FILE)
+    logger.info(f"Tagging complete. Added {new_tags_count} new tags. Total cached: {len(cache)}")
     return cache
 
 def tag_all_records_sync(records: List[ZoteroRecord]) -> Dict[str, List[str]]:

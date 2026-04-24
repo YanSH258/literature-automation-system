@@ -7,9 +7,9 @@ StanceType = Literal["supporting", "contrasting", "mentioning", "not_supported"]
 
 @dataclass(frozen=True)
 class LCRChunk:
-    """单个文献片段，兼容 PaperQA2.Text 转换而来。"""
-    chunk_id: str          # 格式: "{doc_id}#{seq:04d}"
-    doc_id: str            # DOI 优先，无则 UUID
+    """单个文献片段。chunk_id 格式: "{doc_id}#{seq:04d}"。"""
+    chunk_id: str
+    doc_id: str            # DOI
     text: str
     section: str
     page: int
@@ -18,27 +18,6 @@ class LCRChunk:
     metadata: dict = field(default_factory=dict)
     rcs_score: float | None = None
     rcs_summary: str | None = None
-
-    @classmethod
-    def from_paperqa_text(cls, text, seq: int) -> "LCRChunk":
-        """从 PaperQA2 的 Text 对象转换。"""
-        doc = text.doc
-        return cls(
-            chunk_id=f"{doc.dockey}#{seq:04d}",
-            doc_id=doc.dockey,
-            text=text.text,
-            section=getattr(text, "name", ""),
-            page=getattr(text, "page", 0),
-            char_start=0,
-            char_end=len(text.text),
-            metadata={
-                "title": getattr(doc, "title", ""),
-                "authors": getattr(doc, "authors", []),
-                "year": getattr(doc, "year", None),
-                "doi": getattr(doc, "doi", ""),
-                "journal": getattr(doc, "journal", ""),
-            },
-        )
 
 
 @dataclass

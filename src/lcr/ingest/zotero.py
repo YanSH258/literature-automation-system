@@ -4,7 +4,6 @@ import getpass
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict
-from lcr.ingest.normalizer import normalize_doi
 
 DOI_QUERY = """
 SELECT i.itemID, i.key, LOWER(idv.value) AS doi
@@ -83,6 +82,7 @@ class ZoteroRecord:
     year: Optional[str] = None
     abstract: Optional[str] = None
     collection_paths: List[str] = field(default_factory=list)
+    keywords: List[str] = field(default_factory=list)  # Zotero tags (期刊关键词 + 手动标签)
 
 class ZoteroIngestor:
     def __init__(self, zotero_dir: Optional[str] = None):
@@ -126,30 +126,16 @@ class ZoteroIngestor:
                 return p
         raise FileNotFoundError(f"Could not find Zotero data directory. Searched: {paths}")
 
-    def _resolve_collection_paths(self, item_id: int, cursor) -> List[str]:
-        """为 item 递归查找所有所属集合的完整路径。"""
-        # 1. 缓存集合基础信息
-        cursor.execute("SELECT collectionID, collectionName, parentCollectionID FROM collections")
-        col_map = {row[0]: {"name": row[1], "parent": row[2]} for row in cursor.fetchall()}
-        
-        # 2. 找到该 item 直属的所有 collectionID
-        cursor.execute("SELECT collectionID FROM collectionItems WHERE itemID = ?", (item_id,))
-        direct_cols = [row[0] for row in cursor.fetchall()]
-        
-        paths = []
-        for cid in direct_cols:
-            path_parts = []
-            curr = cid
-            while curr in col_map:
-                path_parts.append(col_map[curr]["name"])
-                curr = col_map[curr]["parent"]
-            paths.append("/".join(reversed(path_parts)))
-        return paths
+    def to_manifest_records(self, records: list) -> list[dict]:
+        return [
+            {"file_location": r.pdf_path, "doi": r.doi, "title": r.title or ""}
+            for r in records if r.pdf_path
+        ]
 
     def load_collections_tree(self) -> dict:
         """加载 Zotero 集合树及文献元数据。"""
         try:
-            db_uri = f"file:{self.db_path}?mode=ro"
+            db_uri = f"file:{self.db_path}?mode=ro&immutable=1"
             conn = sqlite3.connect(db_uri, uri=True)
         except sqlite3.OperationalError:
             conn = sqlite3.connect(str(self.db_path))
@@ -194,22 +180,52 @@ class ZoteroIngestor:
                                 pdf_path = str(Path(path).absolute())
                 item_pdf_map[item_id] = pdf_path
 
-            # 4. 构造集合及文献数据
+            # 4. 一次性获取所有集合的文献元数据，避免 N+1
+            ALL_METADATA_QUERY = """
+            SELECT
+                ci.collectionID,
+                i.itemID,
+                LOWER(doi_val.value) AS doi,
+                title_val.value AS title,
+                year_val.value AS year,
+                abs_val.value AS abstract
+            FROM items i
+            JOIN collectionItems ci ON i.itemID = ci.itemID
+            LEFT JOIN itemData doi_d ON i.itemID = doi_d.itemID
+                AND doi_d.fieldID = (SELECT fieldID FROM fields WHERE fieldName = 'DOI')
+            LEFT JOIN itemDataValues doi_val ON doi_d.valueID = doi_val.valueID
+            LEFT JOIN itemData title_d ON i.itemID = title_d.itemID
+                AND title_d.fieldID = (SELECT fieldID FROM fields WHERE fieldName = 'title')
+            LEFT JOIN itemDataValues title_val ON title_d.valueID = title_val.valueID
+            LEFT JOIN itemData year_d ON i.itemID = year_d.itemID
+                AND year_d.fieldID = (SELECT fieldID FROM fields WHERE fieldName = 'date')
+            LEFT JOIN itemDataValues year_val ON year_d.valueID = year_val.valueID
+            LEFT JOIN itemData abs_d ON i.itemID = abs_d.itemID
+                AND abs_d.fieldID = (SELECT fieldID FROM fields WHERE fieldName = 'abstractNote')
+            LEFT JOIN itemDataValues abs_val ON abs_d.valueID = abs_val.valueID
+            WHERE i.libraryID = 1
+              AND i.itemTypeID NOT IN (
+                  SELECT itemTypeID FROM itemTypes WHERE typeName IN ('attachment','note', 'feed', 'feedItem')
+              )
+            """
+            cursor.execute(ALL_METADATA_QUERY)
+            col_items_map = {}
+            for cid, iid, doi, title, year, abstract in cursor.fetchall():
+                if cid not in col_items_map:
+                    col_items_map[cid] = []
+                col_items_map[cid].append({
+                    "doi": doi or f"no_doi_{iid}",
+                    "title": title or doi or f"Untitled {iid}",
+                    "year": year[:4] if year else "N/A",
+                    "abstract": abstract,
+                    "has_pdf": item_pdf_map.get(iid) is not None,
+                    "pdf_path": item_pdf_map.get(iid)
+                })
+
+            # 5. 构造集合树
             collections = []
             for col_id, col_name, parent_id in collections_rows:
-                cursor.execute(ITEM_METADATA_QUERY, (col_id,))
-                item_rows = cursor.fetchall()
-                
-                items = []
-                for iid, doi, title, year, abstract in item_rows:
-                    items.append({
-                        "doi": doi or f"no_doi_{iid}",
-                        "title": title or doi or f"Untitled {iid}",
-                        "year": year[:4] if year else "N/A",
-                        "abstract": abstract,
-                        "has_pdf": item_pdf_map.get(iid) is not None,
-                        "pdf_path": item_pdf_map.get(iid)
-                    })
+                items = col_items_map.get(col_id, [])
                 
                 collections.append({
                     "id": col_id,
@@ -226,7 +242,7 @@ class ZoteroIngestor:
         """查询所有带 DOI 的文献记录（补充摘要和集合路径）。"""
         records = []
         try:
-            db_uri = f"file:{self.db_path}?mode=ro"
+            db_uri = f"file:{self.db_path}?mode=ro&immutable=1"
             conn = sqlite3.connect(db_uri, uri=True)
         except sqlite3.OperationalError:
             conn = sqlite3.connect(str(self.db_path))
@@ -253,7 +269,17 @@ class ZoteroIngestor:
             cursor.execute(META_ALL_QUERY)
             metadata = {row[0]: {"title": row[1], "year": row[2]} for row in cursor.fetchall()}
 
-            # 3. 递归集合路径缓存（优化：只对有 item 的集合构建映射）
+            # 3. 抓取关键词（Zotero tags：期刊自动导入关键词 + 用户手动标签）
+            cursor.execute("""
+                SELECT it.itemID, t.name
+                FROM itemTags it
+                JOIN tags t ON it.tagID = t.tagID
+            """)
+            item_keywords: Dict[int, List[str]] = {}
+            for iid, kw in cursor.fetchall():
+                item_keywords.setdefault(iid, []).append(kw)
+
+            # 4. 递归集合路径缓存（优化：只对有 item 的集合构建映射）
             cursor.execute("SELECT collectionID, collectionName, parentCollectionID FROM collections")
             col_info = {row[0]: {"name": row[1], "parent": row[2]} for row in cursor.fetchall()}
             
@@ -271,7 +297,7 @@ class ZoteroIngestor:
                     curr = col_info[curr]["parent"]
                 return "/".join(reversed(parts))
 
-            # 4. 主查询
+            # 5. 主查询
             cursor.execute(DOI_QUERY)
             doi_rows = cursor.fetchall()
             
@@ -315,20 +341,9 @@ class ZoteroIngestor:
                     title=meta.get("title"),
                     year=meta.get("year"),
                     abstract=abstracts.get(item_id),
-                    collection_paths=paths
+                    collection_paths=paths,
+                    keywords=item_keywords.get(item_id, []),
                 ))
         finally:
             conn.close()
         return records
-
-    def to_manifest_records(self, records: List[ZoteroRecord]) -> List[Dict]:
-        """把 ZoteroRecord 列表转为 generate_manifest_csv 需要的格式。"""
-        manifest_records = []
-        for r in records:
-            if r.pdf_path:
-                manifest_records.append({
-                    "file_location": r.pdf_path,
-                    "doi": r.doi,
-                    "title": r.title or ""
-                })
-        return manifest_records

@@ -2,32 +2,33 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
-import tempfile
 import asyncio
 import litellm
-import hashlib
 import json
-import glob as glob_module
 import re
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-from paperqa import Settings, ask
+from pydantic import BaseModel, SecretStr
+from lcr.config import settings as lcr_settings
 from pathlib import Path
 from typing import List, Optional
 
 from lcr.ingest.zotero import ZoteroIngestor, ZoteroRecord
-from lcr.ingest.normalizer import generate_manifest_csv
 from lcr.ingest.auto_tagger import tag_all_records, tag_all_records_sync
-from lcr.ingest.chroma_ingestor import ingest_all, get_index_stats, CHROMA_DIR
+from lcr.ingest.chroma_ingestor import get_index_stats
 from lcr.retrieval.chroma_retriever import retrieve_chunks
 
 import uuid
 import dataclasses
+import logging
+
+logger = logging.getLogger(__name__)
+
 from lcr.types import LCRChunk
 from lcr.citation.citation_map import build_citation_map
 from lcr.validation.structural import structural_check
+from lcr.generation.evidence_auditor import filter_evidence
 
 app = FastAPI(title="LCR · Literature Citation-RAG")
 
@@ -42,267 +43,114 @@ INDEX_STATUS = {
 
 # 挂载静态文件目录
 static_dir = Path(__file__).parent / "static"
-PROMPTS_DIR = Path(__file__).resolve().parents[3] / "prompts"
-PROMPTS_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 class LLMSettings(BaseModel):
-    llm: str = os.getenv("LCR_LLM", "deepseek/deepseek-chat")
-    summary_llm: str = os.getenv("LCR_SUMMARY_LLM", "") 
-    api_key: str = ""
+    llm: str = lcr_settings.DEFAULT_LLM
+    api_key: SecretStr = SecretStr("")
     api_base: str = ""
-    multimodal: int = 0
-    evidence_k: int = 50
-    max_sources: int = 5
-    chunks_per_paper: int = 4
-    prompt_template: str = ""
+    evidence_k: int = lcr_settings.EVIDENCE_K
+    chunks_per_paper: int = lcr_settings.CHUNKS_PER_PAPER
 
 class AskRequest(BaseModel):
     question: str
-    paper_dir: str = "./papers"
     dois: Optional[List[str]] = None
     collection_filter: Optional[str] = None
     tag_filter: Optional[List[str]] = None
     llm_settings: Optional[LLMSettings] = None
     conversation_history: Optional[List[dict]] = None  # [{role: "user"/"assistant", content: "..."}]
 
-async def query_paperqa(question: str, paper_dir: str, 
-                        dois: Optional[List[str]] = None, 
-                        collection_filter: Optional[str] = None,
-                        tag_filter: Optional[List[str]] = None,
-                        llm_settings: Optional[LLMSettings] = None,
-                        conversation_history: Optional[List[dict]] = None) -> dict:
+async def query_chromadb_workflow(
+    question: str,
+    llm_settings: Optional[LLMSettings],
+    dois: Optional[List[str]],
+    collection_filter: Optional[str],
+    tag_filter: Optional[List[str]],
+    conversation_history: Optional[List[dict]]
+) -> dict:
+    logger.debug("Using ChromaDB retrieval for question: %s", question)
+    # 增加召回数量以供审计筛选
+    raw_k = max(llm_settings.evidence_k if llm_settings else 20, 30)
     
-    # --- 优先尝试 ChromaDB 检索流程 ---
-    chroma_ready = (CHROMA_DIR / "chroma.sqlite3").exists()
-    if chroma_ready:
-        print(f"Using ChromaDB retrieval for question: {question}")
-        chunks, stage_info = retrieve_chunks(
-            question, 
-            n_results=llm_settings.evidence_k if llm_settings else 20,
-            doi_filter=dois,
-            collection_filter=collection_filter,
-            tag_filter=tag_filter,
-            chunks_per_paper=llm_settings.chunks_per_paper if llm_settings else 4
-        )
-        
-        if not chunks:
-            return {
-                "answer": "未找到与该问题相关的文献片段。请确认所选分类下的文献已完成索引，或尝试更换问题。",
-                "citations": [],
-                "structural_check": {"passed": True, "issues": [], "uncited_sentences": [], "cited_indices": []},
-                "retrieval_source": "chromadb",
-                "retrieval_info": stage_info
-            }
-
-        # 构造 Prompt 让 LLM 直接基于 chunks 回答
-        target_llm = llm_settings.llm if llm_settings else os.getenv("LCR_LLM", "deepseek/deepseek-chat")
-
-        context_str = ""
-        for i, c in enumerate(chunks, start=1):
-            meta = c.metadata
-            authors = meta.get('creators', '')
-            pub = meta.get('publication', '')
-            year = meta.get('year', '')
-            header_parts = [f"doi: {meta.get('doi')}"]
-            if authors: header_parts.append(f"authors: {authors}")
-            if pub: header_parts.append(f"journal: {pub}")
-            if year: header_parts.append(f"year: {year[:4]}")
-            context_str += f"[{i}] ({', '.join(header_parts)})\n{c.text}\n\n"
-
-        system_msg = """You are a rigorous scientific literature analyst. Rules you MUST follow:
-1. Answer in the same language as the question.
-2. Every single sentence with a factual claim MUST end with a citation like [n]. No exceptions.
-3. Citation format: [n] for single, [n][m] for multiple. NEVER use [n, m] or [n,m].
-4. Do NOT write any concluding summary paragraph — end after your last cited point.
-5. Only use information from the provided context. Do not hallucinate."""
-
-        user_msg = f"""Context (scientific paper chunks):
-{context_str}
-
-Question: {question}
-
-Answer (cite every claim with [n], no uncited summary at the end):"""
-
-        messages = [{"role": "system", "content": system_msg}]
-        if conversation_history:
-            messages.extend(conversation_history)
-        messages.append({"role": "user", "content": user_msg})
-
-        try:
-            response = await litellm.acompletion(
-                model=target_llm,
-                api_key=llm_settings.api_key if llm_settings and llm_settings.api_key else None,
-                api_base=llm_settings.api_base if llm_settings and llm_settings.api_base else None,
-                messages=messages
-            )
-        except Exception as e:
-            raise HTTPException(status_code=502, detail=f"LLM error: {e}")
-        answer_text = response.choices[0].message.content
-
-        session_id = str(uuid.uuid4())
-        cmap = build_citation_map(chunks, session_id=session_id, turn_id=1)
-        structural = structural_check(answer_text, max_index=len(chunks))
-
-        citations_out = []
-        for idx, entry in cmap.entries.items():
-            citations_out.append({
-                "display_index": entry.display_index,
-                "chunk_id": entry.chunk_id,
-                "doc_id": entry.doc_id,
-                "snippet": entry.snippet,
-                "rcs_score": entry.rcs_score,
-                "metadata": entry.metadata,
-            })
-
+    chunks, stage_info = await asyncio.to_thread(
+        retrieve_chunks,
+        question, 
+        n_results=raw_k,
+        doi_filter=dois,
+        collection_filter=collection_filter,
+        tag_filter=tag_filter,
+        chunks_per_paper=llm_settings.chunks_per_paper if llm_settings else 4
+    )
+    
+    if not chunks:
         return {
-            "answer": answer_text,
-            "citations": citations_out,
-            "structural_check": {
-                "passed": structural.passed,
-                "issues": structural.issues,
-                "uncited_sentences": structural.uncited_sentences,
-                "cited_indices": structural.cited_indices,
-            },
+            "answer": "未找到与该问题相关的文献片段。请确认所选分类下的文献已完成索引，或尝试更换问题。",
+            "citations": [],
+            "structural_check": {"passed": True, "issues": [], "uncited_sentences": [], "cited_indices": []},
             "retrieval_source": "chromadb",
             "retrieval_info": stage_info
         }
 
-    # --- Fallback: 原始 PaperQA2 流程 ---
-    # 1. 环境与路径准备
-    if not os.path.exists(paper_dir):
-        os.makedirs(paper_dir, exist_ok=True)
+    # --- 批处理证据审计与筛选 ---
+    # 使用较便宜的模型进行审计
+    audit_llm = lcr_settings.AUDIT_LLM
+    chunks = await filter_evidence(
+        question=question,
+        chunks=chunks,
+        llm=audit_llm,
+        api_key=None,
+        api_base=None,
+        min_score=lcr_settings.EVIDENCE_MIN_SCORE
+    )
+    
+    # 截断到最终展示数量
+    display_k = llm_settings.evidence_k if llm_settings else 10
+    chunks = chunks[:display_k]
 
-    if dois:
-        ingestor = ZoteroIngestor()
-        all_records = ingestor.load_records()
-        doi_to_record = {r.doi.lower(): r for r in all_records}
+    # 构造 Prompt 让 LLM 直接基于 chunks 回答
+    target_llm = llm_settings.llm if llm_settings else lcr_settings.DEFAULT_LLM
 
-        # 用排序后的 DOI 列表生成稳定哈希，相同选纸集合复用同一目录
-        doi_hash = hashlib.md5(",".join(sorted(d.lower() for d in dois)).encode()).hexdigest()[:12]
-        cache_dir = Path(tempfile.gettempdir()) / f"lcr_papers_{doi_hash}"
-        cache_dir.mkdir(exist_ok=True)
-
-        linked = 0
-        for d in dois:
-            rec = doi_to_record.get(d.lower())
-            if rec and rec.pdf_path and os.path.exists(rec.pdf_path):
-                pdf = Path(rec.pdf_path)
-                dest = cache_dir / f"{pdf.parent.name}_{pdf.name}"
-                if not dest.exists():
-                    os.symlink(pdf, dest)
-                linked += 1
-        if linked == 0:
-            raise ValueError("No valid PDFs found for the selected DOIs")
-        paper_dir = str(cache_dir)
-
-    # 2. 模型与 API 配置
-    target_llm = os.getenv("LCR_LLM", "deepseek/deepseek-chat")
-    if llm_settings:
-        target_llm = llm_settings.llm
-        if llm_settings.api_key:
-            if "deepseek" in target_llm.lower(): os.environ["DEEPSEEK_API_KEY"] = llm_settings.api_key
-            elif "claude" in target_llm.lower() or "anthropic" in target_llm.lower(): os.environ["ANTHROPIC_API_KEY"] = llm_settings.api_key
-            elif "minimax" in target_llm.lower():
-                os.environ["MINIMAX_API_KEY"] = llm_settings.api_key
-                if llm_settings.api_base:
-                    os.environ["MINIMAX_API_BASE"] = llm_settings.api_base
-            elif "moonshot" in target_llm.lower() or "kimi" in target_llm.lower():
-                os.environ["MOONSHOT_API_KEY"] = llm_settings.api_key
-            elif "gemini" in target_llm.lower(): os.environ["GEMINI_API_KEY"] = llm_settings.api_key
-            else: os.environ["OPENAI_API_KEY"] = llm_settings.api_key
+    context_parts = []
+    for i, c in enumerate(chunks, start=1):
+        meta = c.metadata
+        authors = meta.get('creators', '')
+        pub = meta.get('publication', '')
+        year = meta.get('year', '')
+        header_parts = [f"doi: {meta.get('doi')}"]
+        if authors: header_parts.append(f"authors: {authors}")
+        if pub: header_parts.append(f"journal: {pub}")
+        if year: header_parts.append(f"year: {year[:4]}")
         
-        # 全局设置 litellm.api_base 以便支持自定义服务商
-        if llm_settings.api_base:
-            litellm.api_base = llm_settings.api_base
+        text_to_show = c.text
+        if c.rcs_summary:
+            text_to_show = f"KEY EVIDENCE: {c.rcs_summary}\nCONTEXT: {c.text}"
+            
+        context_parts.append(f"[{i}] ({', '.join(header_parts)})\n{text_to_show}")
+    
+    context_str = "\n\n".join(context_parts)
 
-    target_summary_llm = (llm_settings.summary_llm.strip()
-                          if llm_settings and llm_settings.summary_llm.strip()
-                          else target_llm)
+    system_msg = lcr_settings.SYSTEM_PROMPT
+    user_msg = f"""Context (scientific paper chunks):\n{context_str}\n\nQuestion: {question}\n\nAnswer (cite every claim with [n], no uncited summary at the end):"""
 
-    # 3. 提问预处理
-    search_question = question
+    messages = [{"role": "system", "content": system_msg}]
+    if conversation_history:
+        messages.extend(conversation_history)
+    messages.append({"role": "user", "content": user_msg})
 
-    # 4. 构造 PaperQA2 设置
-    multimodal_val = llm_settings.multimodal if llm_settings else 0
-    evidence_k_val = llm_settings.evidence_k if llm_settings else 10
-    max_sources_val = llm_settings.max_sources if llm_settings else 5
-
-    # 优先使用用户传入的自定义模板，否则用默认值
-    base_summary_prompt = (
-        llm_settings.prompt_template.strip()
-        if llm_settings and llm_settings.prompt_template.strip()
-        else "Summarize the text relevant to the question: {question}. Text: {text}. Focus on objective findings."
-    )
-
-    settings = Settings(
-        llm=target_llm,
-        summary_llm=target_summary_llm,
-        embedding="st-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", # 多语言470MB，比BGE-M3快10倍
-        parsing={"multimodal": multimodal_val},
-        answer={
-            "evidence_k": evidence_k_val,
-            "answer_max_sources": max_sources_val,
-        },
-        agent={
-            "agent_llm": target_llm,
-            "search_count": 3, # 限制 Agent 最大搜索次数，防止死循环
-            "index": {
-                "paper_directory": paper_dir,
-                "index_directory": str(Path(tempfile.gettempdir()) / f"lcr_index_{doi_hash if dois else 'default'}"),
-                "recurse_subdirectories": False,
-            },
-        },
-        prompts={
-            "summary": base_summary_prompt
-        }
-    )
-
-    # 5. 执行查询（带超时保护）
     try:
-        result = await asyncio.wait_for(
-            ask(search_question, settings=settings),
-            timeout=600.0 # 大批量文献首次索引+查询，给 600 秒
+        response = await litellm.acompletion(
+            model=target_llm,
+            api_key=llm_settings.api_key.get_secret_value() if llm_settings and llm_settings.api_key.get_secret_value() else None,
+            api_base=llm_settings.api_base if llm_settings and llm_settings.api_base else None,
+            messages=messages
         )
-    except asyncio.TimeoutError:
-        return {"answer": "The analysis timed out. Please try selecting fewer papers or a simpler question.", "citations": []}
-
-    # 6. 构造返回结果
-    answer_text = result.session.answer if result.session else "No answer generated."
-
-    chunks: list[LCRChunk] = []
-    if result.session and result.session.contexts:
-        for seq, ctx in enumerate(result.session.contexts, start=1):
-            chunk = LCRChunk.from_paperqa_text(ctx.text, seq)
-            chunk = dataclasses.replace(chunk, rcs_score=float(ctx.score or 0.0))
-            chunks.append(chunk)
+    except Exception:
+        raise HTTPException(status_code=502, detail="LLM service error")
+    answer_text = response.choices[0].message.content
 
     session_id = str(uuid.uuid4())
-    cmap = build_citation_map(chunks, session_id=session_id, turn_id=1)
-
-    # M6: 将 PaperQA2 的 (pqac-xxx) 引用 key 替换为 [n] 编号
-    # 先构建 doc_id -> display_index 映射（每个 doc 取最小编号的 chunk）
-    doc_to_idx: dict[str, int] = {}
-    for idx, entry in cmap.entries.items():
-        if entry.doc_id not in doc_to_idx or idx < doc_to_idx[entry.doc_id]:
-            doc_to_idx[entry.doc_id] = idx
-
-    def replace_pqac_citation(match: re.Match) -> str:
-        inner = match.group(1)  # e.g. "pqac-d79ef6fa, pqac-0f650d59"
-        keys = [k.strip() for k in inner.split(",")]
-        nums = []
-        for k in keys:
-            if k in doc_to_idx:
-                nums.append(str(doc_to_idx[k]))
-        if nums:
-            # 使用 [1][2] 格式以绕过 structural_check 对 [1, 2] 的禁止
-            return "".join(f"[{n}]" for n in nums)
-        return match.group(0)
-
-    # 捕获组包含 key 列表，以便 replace_pqac_citation 使用 match.group(1)
-    answer_text = re.sub(r'\((pqac-[a-f0-9]+(?:,\s*pqac-[a-f0-9]+)*)\)',
-                        replace_pqac_citation, answer_text)
-
+    turn_id = len(conversation_history) // 2 if conversation_history else 0
+    cmap = build_citation_map(chunks, session_id=session_id, turn_id=turn_id)
     structural = structural_check(answer_text, max_index=len(chunks))
 
     citations_out = []
@@ -312,9 +160,8 @@ Answer (cite every claim with [n], no uncited summary at the end):"""
             "chunk_id": entry.chunk_id,
             "doc_id": entry.doc_id,
             "snippet": entry.snippet,
-            "rcs_score": round(entry.rcs_score, 2),
+            "rcs_score": entry.rcs_score,
             "metadata": entry.metadata,
-            "from_previous_turn": entry.from_previous_turn,
         })
 
     return {
@@ -326,7 +173,21 @@ Answer (cite every claim with [n], no uncited summary at the end):"""
             "uncited_sentences": structural.uncited_sentences,
             "cited_indices": structural.cited_indices,
         },
+        "retrieval_source": "chromadb",
+        "retrieval_info": stage_info
     }
+
+async def query_paperqa(question: str,
+                        dois: Optional[List[str]] = None,
+                        collection_filter: Optional[str] = None,
+                        tag_filter: Optional[List[str]] = None,
+                        llm_settings: Optional[LLMSettings] = None,
+                        conversation_history: Optional[List[dict]] = None) -> dict:
+    if not (lcr_settings.CHROMA_DIR / "chroma.sqlite3").exists():
+        raise HTTPException(status_code=503, detail="ChromaDB index not built yet. Run python run_index.py first.")
+    return await query_chromadb_workflow(
+        question, llm_settings, dois, collection_filter, tag_filter, conversation_history
+    )
 
 @app.post("/admin/test-llm")
 async def test_llm_endpoint(settings: LLMSettings):
@@ -335,7 +196,7 @@ async def test_llm_endpoint(settings: LLMSettings):
         # 构造极简测试 Prompt
         messages = [{"role": "user", "content": "ping"}]
         
-        # 临时处理 API Key 环境（参考 query_paperqa 逻辑）
+        # 显式传递参数，不污染全局环境变量
         target_model = settings.llm
         api_key = settings.api_key if settings.api_key else None
         api_base = settings.api_base if settings.api_base else None
@@ -345,17 +206,16 @@ async def test_llm_endpoint(settings: LLMSettings):
             litellm.acompletion(
                 model=target_model,
                 messages=messages,
-                api_key=api_key,
+                api_key=api_key.get_secret_value() if api_key else None,
                 api_base=api_base,
                 max_tokens=5
             ),
             timeout=10.0
         )
         return {"status": "success", "content": response.choices[0].message.content}
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return {"status": "error", "message": str(e)}
+    except Exception:
+        logger.exception("LLM test connection failed")
+        return {"status": "error", "message": "Connection failed"}
 
 @app.get("/", response_class=HTMLResponse)
 async def read_index():
@@ -368,7 +228,10 @@ async def read_index():
 async def list_prompts():
     """列出所有可用的 prompt 模板。"""
     templates = []
-    for path in sorted(PROMPTS_DIR.glob("*.json")):
+    if not lcr_settings.PROMPTS_DIR.exists():
+        lcr_settings.PROMPTS_DIR.mkdir(parents=True, exist_ok=True)
+        
+    for path in sorted(lcr_settings.PROMPTS_DIR.glob("*.json")):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             templates.append({
@@ -402,7 +265,7 @@ async def save_prompt(payload: dict):
             detail=f"Invalid variables: {invalid}. Allowed: {allowed}"
         )
     filename = name.lower().replace(" ", "_").replace("/", "_") + ".json"
-    path = PROMPTS_DIR / filename
+    path = lcr_settings.PROMPTS_DIR / filename
     path.write_text(json.dumps({
         "name": name,
         "description": payload.get("description", ""),
@@ -416,10 +279,9 @@ async def get_zotero_collections():
         ingestor = ZoteroIngestor()
         tree = ingestor.load_collections_tree()
         return tree
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Failed to load Zotero collections")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/analyse")
 async def analyse_endpoint(payload: dict):
@@ -432,7 +294,7 @@ async def analyse_endpoint(payload: dict):
 @app.get("/admin/index-status")
 async def index_status():
     """返回索引状态。"""
-    stats = get_index_stats() if CHROMA_DIR.exists() else {"total_chunks": 0, "total_docs": 0}
+    stats = get_index_stats() if lcr_settings.CHROMA_DIR.exists() else {"total_chunks": 0, "total_docs": 0}
     return {**INDEX_STATUS, "stats": stats}
 
 @app.post("/admin/build-index")
@@ -447,32 +309,40 @@ async def build_index_endpoint():
             INDEX_STATUS["is_running"] = True
             INDEX_STATUS["error"] = None
             
-            # 1. 加载 Zotero
             INDEX_STATUS["current_step"] = "loading_zotero"
             ingestor = ZoteroIngestor()
             records = ingestor.load_records()
             INDEX_STATUS["total"] = len(records)
             
-            # 2. 打标 (LLM)
             INDEX_STATUS["current_step"] = "auto_tagging"
             tags_map = await tag_all_records(records)
             
-            # 3. 索引 (Chroma)
             INDEX_STATUS["current_step"] = "chroma_indexing"
-            # 这里简单处理，同步转异步或直接跑在线程池
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, ingest_all, records, tags_map)
+            loop = asyncio.get_running_loop()
+            
+            def run_with_progress():
+                from lcr.ingest.chroma_ingestor import ChromaIngestor
+                ingestor = ChromaIngestor()
+                for i, rec in enumerate(records):
+                    tags = tags_map.get(rec.doi, [])
+                    if rec.pdf_path:
+                        ingestor.ingest_record(rec, tags)
+                    INDEX_STATUS["processed"] = i + 1
+                    
+            await loop.run_in_executor(None, run_with_progress)
             
             INDEX_STATUS["current_step"] = "completed"
         except Exception as e:
-            import traceback
-            traceback.print_exc()
+            logger.exception("Background indexing failed")
             INDEX_STATUS["error"] = str(e)
             INDEX_STATUS["current_step"] = "failed"
         finally:
             INDEX_STATUS["is_running"] = False
 
-    asyncio.create_task(run_indexing())
+    task = asyncio.create_task(run_indexing())
+    task.add_done_callback(
+        lambda t: logger.error("Indexing task failed", exc_info=t.exception()) if t.exception() else None
+    )
     return {"status": "started"}
 
 @app.get("/admin/tags")
@@ -486,7 +356,6 @@ async def ask_endpoint(payload: AskRequest):
     try:
         return await query_paperqa(
             payload.question,
-            payload.paper_dir,
             payload.dois,
             payload.collection_filter,
             payload.tag_filter,
@@ -495,7 +364,6 @@ async def ask_endpoint(payload: AskRequest):
         )
     except HTTPException:
         raise
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Ask endpoint failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
